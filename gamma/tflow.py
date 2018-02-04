@@ -4,14 +4,12 @@ import tensorflow as tf
 from google.protobuf.json_format import MessageToDict, ParseDict
 from gamma.core import reindex, map_values
 
-
 def load_graph_def(pb_filename):
     graph_def = tf.GraphDef()
     with tf.gfile.GFile(pb_filename, 'rb') as fid:
         serialized_graph = fid.read()
         graph_def.ParseFromString(serialized_graph)
     return graph_def
-
 
 def unwrap_node_attr(arg):
     if arg.HasField('tensor'):

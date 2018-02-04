@@ -9,10 +9,10 @@ from gamma.core import cache, values, get_inputs, items
 
 palette = ['#8dd3c7', '#ffffb3', '#bebada', '#fb8072', '#80b1d3', '#fdb462',
            '#b3de69', '#fccde5', '#bc80bd', '#ccebc5', '#ffed6f', '#1f78b4',
-           '#33a02c', '#e31a1c', '#b15928', '#ff7f00', '#cccccc', '#4dddf8',
+           '#33a02c', '#e31a1c', '#ff7f00', '#cccccc', '#4dddf8',
            '#e66493', '#b07b87', '#f7397b', '#4e90e3', '#dea05e', '#d0c281',
            '#f0e189', '#e9e8b1', '#e0eb71', '#bbd2a4', '#6ed641', '#57eb9c',
-           '#3ca4d4', '#92d5e7']
+           '#3ca4d4', '#92d5e7', '#b15928',]
 
 
 class ColorMap(dict):
