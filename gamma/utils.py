@@ -72,8 +72,8 @@ def draw(graph, subgraphs=None, legend=True, scale=1, **kwargs):
 
 def draw_pydot(nodes, edges, direction='LR', **kwargs):
     def make_subgraph(path, parent_graph):
-         subgraph = Cluster(
-            path, label=split(path)[1], style='rounded, filled', fillcolor='#77777744')
+        subgraph = Cluster(
+           path, label=split(path)[1], style='rounded, filled', fillcolor='#77777744')
         parent_graph.add_subgraph(subgraph)
         return subgraph
 
