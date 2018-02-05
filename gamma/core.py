@@ -167,8 +167,9 @@ def node_constraint(node, pattern_node, graph, bindings):
     if node in bindings:
         b = bindings[node]
         if b not in graph:
-            raise KeyError(
-                'Node %s is missing from the graph. Perhaps you need to supply it as an input?' % b)
+            return failure
+            #raise KeyError(
+            #    'Node %s is missing from the graph. Perhaps you need to supply it as an input?' % b)
         bindings = unify(graph[b][0], pattern_node[0], bindings)
         if bindings is False:
             return failure
