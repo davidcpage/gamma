@@ -14,21 +14,13 @@ def load_graph_def(pb_filename):
 def unwrap_node_attr(arg):
     if arg.HasField('tensor'):
         return tf.make_ndarray(arg.tensor)
-
-    a = MessageToDict(arg)
-    if 'shape' in a:
-        return {'shape': [int(d['size']) for d in a['shape']['dim']]}
-    return a
-
+    return MessageToDict(arg)
 
 def wrap_node_attr(v):
     if isinstance(v, np.ndarray):
         return {'tensor': 
         MessageToDict(tf.make_tensor_proto(v))}
-    if 'shape' in v:
-        return {'shape': {'dim': [{'size': str(x)} for x in v['shape']]}}
     return v
-
 
 def to_graph(graph_def):
     graph = {n.name: ({'type': n.op, 'label': n.name, 'params':
