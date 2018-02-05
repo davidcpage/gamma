@@ -31,10 +31,10 @@ def to_graph(graph_def):
 
 
 def from_graph(graph):
-    name_lookup = {n: attr['label'] for n, (attr, _) in graph.items()}
+    name_lookup = lambda n: graph[n][0]['label'] if n in graph else str(n)
     nodes = [{'name': attr['label'], 'op': attr['type'],
               'attr': {k: wrap_node_attr(v) for (k, v) in attr['params'].items()},
-              'input': map_values(name_lookup.get, inputs)}
+              'input': map_values(name_lookup, inputs)}
              for name, (attr, inputs) in graph.items()]
     return ParseDict({'node': nodes, 'library': {}}, tf.GraphDef())
 
