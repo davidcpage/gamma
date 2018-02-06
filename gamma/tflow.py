@@ -1,8 +1,6 @@
   
 import numpy as np
 import tensorflow as tf
-from google.protobuf.json_format import MessageToDict, ParseDict
-from gamma.core import reindex, map_values
 
 def load_graph_def(pb_filename):
     graph_def = tf.GraphDef()
@@ -10,33 +8,6 @@ def load_graph_def(pb_filename):
         serialized_graph = fid.read()
         graph_def.ParseFromString(serialized_graph)
     return graph_def
-
-def unwrap_node_attr(arg):
-    if arg.HasField('tensor'):
-        return tf.make_ndarray(arg.tensor)
-    return MessageToDict(arg)
-
-def wrap_node_attr(v):
-    if isinstance(v, np.ndarray):
-        return {'tensor': 
-        MessageToDict(tf.make_tensor_proto(v))}
-    return v
-
-def to_graph(graph_def):
-    graph = {n.name: ({'type': n.op, 'label': n.name, 'params':
-                       {k: unwrap_node_attr(v) for k, v in n.attr.items()}
-                       }, [i.split(':', 1)[0] for i in n.input])
-             for n in graph_def.node}
-    return reindex(graph, {k: i for (i, k) in enumerate(graph.keys())})
-
-
-def from_graph(graph):
-    name_lookup = lambda n: graph[n][0]['label'] if n in graph else str(n)
-    nodes = [{'name': attr['label'], 'op': attr['type'],
-              'attr': {k: wrap_node_attr(v) for (k, v) in attr['params'].items()},
-              'input': map_values(name_lookup, inputs)}
-             for name, (attr, inputs) in graph.items()]
-    return ParseDict({'node': nodes, 'library': {}}, tf.GraphDef())
 
 
 def build_graph_def(tf_code):

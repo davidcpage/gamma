@@ -63,6 +63,9 @@ class cache(dict):
 # graph utils
 #################
 
+def get_attr(node):
+    return node[0]
+
 
 def get_inputs(node):
     return node[1]
@@ -71,7 +74,22 @@ def get_inputs(node):
 def subgraph(graph, nodes):
     return {n: v for n, v in graph.items() if n in nodes}
 
+def walk_nodes(neighbours, starting_nodes):
+    visited = set()
+    frontier = set(starting_nodes)
+    while frontier:
+        node = frontier.pop()
+        visited.add(node)
+        frontier.update(n for n in neighbours(node) if n not in visited)
+        yield node
+    
 
+def restrict(graph, inputs, outputs):
+    neighbours = lambda node: (n for n in values(get_inputs(graph[node]))
+                               if (node in graph and n not in inputs))
+    return walk_nodes(neighbours, outputs)
+
+"""
 def restrict(graph, inputs, outputs):
     nodes = []
     frontier = set(outputs)
@@ -82,7 +100,7 @@ def restrict(graph, inputs, outputs):
             frontier.update(n for n in values(get_inputs(graph[node]))
                             if n not in inputs)
     return subgraph(graph, nodes)
-
+"""
 
 def edges(graph):
     return [(src, dst, port) for dst, (attr, inputs) in graph.items()
@@ -101,7 +119,7 @@ def neighbourhoods(graph):
     return gather((e[i], (e[1-i], e)) for e in edges(graph) for i in (0, 1))
 
 
-def inputs(graph):
+def external_inputs(graph):
     return {s for (s, _, _) in edges(graph) if s not in graph.keys()}
 
 
@@ -140,7 +158,6 @@ def relabel(graph, label_func):
 #####################
 
 
-success = [{}]
 failure = []
 
 
@@ -163,45 +180,37 @@ def edge_constraint(edge, in_edges, out_edges, bindings):
         raise Exception('unconstrained edge')
 
 
+def unify_(x, y, ctxt):
+    new_ctxt = unify(x, y, ctxt)
+    return failure if new_ctxt is False else [new_ctxt]
+
+
 def node_constraint(node, pattern_node, graph, bindings):
     if node in bindings:
         b = bindings[node]
-        if b not in graph:
-            return failure
-            #raise KeyError(
-            #    'Node %s is missing from the graph. Perhaps you need to supply it as an input?' % b)
-        bindings = unify(graph[b][0], pattern_node[0], bindings)
-        if bindings is False:
-            return failure
-        else:
-            return [bindings]
+        if b in graph:
+            return unify_(get_attr(graph[b]), get_attr(pattern_node), bindings)
+        return failure 
     else:
-        new_bindings = ((n, unify(attr, pattern_node[0], bindings))
-                        for n, (attr, inputs) in graph.items())
-        return [assoc(b, {node: n}, True) for (n, b) in new_bindings
-                if b is not False]
-
+        return [assoc(b, {node: n}, True) for n, (attr, _) in graph.items()
+                    for b in unify_(attr, get_attr(pattern_node), bindings)]
+ 
 
 def plan_query(pattern):
-    starting_node = list(pattern.keys())[-1]  # better logic here..!
     neighbours = neighbourhoods(pattern)
+    nodes = list(pattern.keys())
     query = []
-    frontier = {starting_node}
-    while frontier:
-        node = frontier.pop()
-        if node in pattern.keys():
+    starting_nodes = {nodes[-1]} #better logic here..!
+    for node in walk_nodes(lambda node: (n for (n, _) in neighbours[node]), starting_nodes):
+        if node in nodes:
             query.append(node)
-        for n, edge in neighbours[node]:
-            if edge not in query:
-                query.append(edge)
-            if n not in query:
-                frontier.add(n)
+        query.extend(edge for _, edge in neighbours[node] if edge not in query)
     return query
 
 
 def find_matches(graph, pattern, unify_params=True):
     ins, outs = in_edges(graph), out_edges(graph)  # compute 'indices'
-    proposals = success
+    proposals = [{}]
     for step in plan_query(pattern):
         if isinstance(step, tuple):
             edge = step
@@ -221,11 +230,9 @@ def apply_rule(graph, rule):
     # remove matched nodes except for inputs
     remove = {n for match in matches for k, n in match.items() if k in LHS}
     # generate names for nodes to be added to the graph
-    IDs = filter(lambda key: key not in graph, ('v%g' % i for i in count(1)))
-    add = [reindex(RHS, union(dict(zip(RHS.keys(), IDs)), match))
+    IDs = filter(lambda key: key not in graph, count(1))
+    add = [reify(reindex(RHS, union(dict(zip(RHS.keys(), IDs)), match)), match)
            for match in matches]
-    # unify_params
-    add = [reify(*p) for p in zip(add, matches)]
     return union({k: v for k, v in graph.items() if k not in remove}, *add)
 
 
