@@ -89,18 +89,6 @@ def restrict(graph, inputs, outputs):
                                if (node in graph and n not in inputs))
     return walk_nodes(neighbours, outputs)
 
-"""
-def restrict(graph, inputs, outputs):
-    nodes = []
-    frontier = set(outputs)
-    while frontier:
-        node = frontier.pop()
-        nodes.append(node)
-        if node in graph:
-            frontier.update(n for n in values(get_inputs(graph[node]))
-                            if n not in inputs)
-    return subgraph(graph, nodes)
-"""
 
 def edges(graph):
     return [(src, dst, port) for dst, (attr, inputs) in graph.items()
