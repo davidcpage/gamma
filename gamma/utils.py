@@ -1,18 +1,18 @@
 from pydot import Dot, Cluster, Node, Edge
 from IPython.display import display, SVG, HTML
-from gamma.core import cache, values, get_inputs, items
+from gamma.core import cache, get_inputs
 
 ################
 # plotting
 ################
 
 
-palette = ['#8dd3c7', '#ffffb3', '#bebada', '#fb8072', '#80b1d3', '#fdb462',
+palette = ('#8dd3c7', '#ffffb3', '#bebada', '#fb8072', '#80b1d3', '#fdb462',
            '#b3de69', '#fccde5', '#bc80bd', '#ccebc5', '#ffed6f', '#1f78b4',
            '#33a02c', '#e31a1c', '#ff7f00', '#4dddf8',
            '#e66493', '#b07b87', '#f7397b', '#4e90e3', '#dea05e', '#d0c281',
            '#f0e189', '#e9e8b1', '#e0eb71', '#bbd2a4', '#6ed641', '#57eb9c',
-           '#3ca4d4', '#92d5e7', '#b15928',]
+           '#3ca4d4', '#92d5e7', '#b15928')
 
 
 class ColorMap(dict):
@@ -48,7 +48,7 @@ def parent(path):
 def heights(graph):
     self = cache()
     self.func = lambda node: 1 + max((self[n] for n in
-                                      (values(get_inputs(graph[node])) if node in graph else ())),
+                                      (get_inputs(graph[node]) if node in graph else ())),
                                      default=0)
     return {n: self[n] for n in graph}
 
@@ -62,7 +62,7 @@ def draw(graph, subgraphs=None, legend=True, scale=1, **kwargs):
                'fillcolor': COLORS[attr['type']],
                }) for node, (attr, _) in graph.items()]
     edges = ((src, dst, {}) for dst, (_, inputs) in graph.items()
-             for port, src in items(inputs))
+             for port, src in enumerate(inputs))
     g = draw_pydot(nodes, edges, subgraphs=subgraphs, size=size, **kwargs)
     if legend:
         types = {attr['type'] for _, (attr, _) in graph.items()}
