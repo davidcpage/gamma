@@ -1,5 +1,3 @@
-  
-import numpy as np
 import tensorflow as tf
 
 def load_graph_def(pb_filename):

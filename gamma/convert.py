@@ -1,6 +1,6 @@
 import numpy as np
 from google.protobuf.json_format import MessageToDict, ParseDict
-from .core import union, reindex, map_values
+from .core import union, reindex
 
 def from_onnx(onnx_model):
     import onnx
@@ -34,6 +34,6 @@ def to_tflow(graph):
              if isinstance(arg, np.ndarray) else arg)
     nodes = [{'name': attr['label'], 'op': attr['type'],
               'attr': {k: wrap(v) for (k, v) in attr['params'].items()},
-              'input': map_values(name_lookup, inputs)}
+              'input': [name_lookup(i) for i in inputs]}
              for name, (attr, inputs) in graph.items()]
     return ParseDict({'node': nodes, 'library': {}}, tf.GraphDef())

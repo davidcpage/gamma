@@ -26,30 +26,6 @@ def assoc(dictionary, updates, inplace=False):
     return dictionary
 
 
-def values(container):
-    if isinstance(container, dict):
-        return container.values()
-    return container
-
-
-def items(container):
-    if isinstance(container, dict):
-        return container.items()
-    return enumerate(container)
-
-
-def map_values(func, container):
-    if isinstance(container, dict):
-        return {k: func(v) for (k, v) in container.items()}
-    return [func(v) for v in container]
-
-
-def filter_values(func, container):
-    if isinstance(container, dict):
-        return {k: v for (k, v) in container.items() if func(v)}
-    return [v for v in container if func(v)]
-
-
 class cache(dict):
     def __init__(self, func=None):
         self.func = func
@@ -85,14 +61,14 @@ def walk_nodes(neighbours, starting_nodes):
     
 
 def restrict(graph, inputs, outputs):
-    neighbours = lambda node: (n for n in values(get_inputs(graph[node]))
+    neighbours = lambda node: (n for n in get_inputs(graph[node])
                                if (node in graph and n not in inputs))
     return walk_nodes(neighbours, outputs)
 
 
 def edges(graph):
     return [(src, dst, port) for dst, (attr, inputs) in graph.items()
-            for port, src in items(inputs)]
+            for port, src in enumerate(inputs)]
 
 
 def in_edges(graph):
@@ -112,15 +88,14 @@ def external_inputs(graph):
 
 
 def strip_inputs(graph):
-    f = set(graph.keys()).__contains__
-    return {n: (attr, filter_values(f, inputs))
+    return {n: (attr, [i for i in inputs if i not in graph.keys()])
             for n, (attr, inputs) in graph.items()}
 
 
 def strip_by_type(graph, type_):
     remove = {k for k, (attr, inputs) in graph.items()
               if attr['type'] == type_}
-    return {n: (attr, filter_values(lambda x: x not in remove, inputs))
+    return {n: (attr, [i for i in inputs if i not in remove])
             for n, (attr, inputs) in graph.items() if n not in remove}
 
 
@@ -128,7 +103,7 @@ def reindex(graph, name_func):
     if isinstance(name_func, dict):
         d = name_func
         name_func = lambda x: d.get(x, x)
-    return {name_func(node): (attr, map_values(name_func, inputs))
+    return {name_func(node): (attr, [name_func(i) for i in inputs])
             for node, (attr, inputs) in graph.items()}
 
 
@@ -196,7 +171,7 @@ def plan_query(pattern):
     return query
 
 
-def find_matches(graph, pattern, unify_params=True):
+def find_matches(graph, pattern):
     ins, outs = in_edges(graph), out_edges(graph)  # compute 'indices'
     proposals = [{}]
     for step in plan_query(pattern):
@@ -214,7 +189,7 @@ def find_matches(graph, pattern, unify_params=True):
 
 def apply_rule(graph, rule):
     LHS, RHS = rule
-    matches = find_matches(graph, LHS, True)
+    matches = find_matches(graph, LHS)
     # remove matched nodes except for inputs
     remove = {n for match in matches for k, n in match.items() if k in LHS}
     # generate names for nodes to be added to the graph
