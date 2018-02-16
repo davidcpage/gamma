@@ -2,15 +2,16 @@ import numpy as np
 from google.protobuf.json_format import MessageToDict, ParseDict
 from .core import union, reindex
 
+
 def from_onnx(onnx_model):
-    import onnx
+    from onnx import numpy_helper
     net = {k: ({
         'label': k,
         'params': {a.name: MessageToDict(a) for a in n.attribute},
         'type': n.op_type},  
         list(n.input)) for n in onnx_model.graph.node for k in n.output}
 
-    constants = {x.name: ({'type': 'Constant', 'label': x.name, 'params': {'value': onnx.numpy_helper.to_array(x)}},[])
+    constants = {x.name: ({'type': 'Constant', 'label': x.name, 'params': {'value': numpy_helper.to_array(x)}},[])
                   for x in onnx_model.graph.initializer}
     inputs = {x.name: ({'type': 'Input', 'label': x.name, 'params': MessageToDict(x)}, []) 
                 for x in onnx_model.graph.input if x.name not in constants}
