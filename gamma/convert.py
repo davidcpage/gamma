@@ -1,22 +1,34 @@
 import numpy as np
 from google.protobuf.json_format import MessageToDict, ParseDict
 from .core import union, reindex
+import onnx
+from onnx import numpy_helper
 
+def from_onnx_nodes(nodes):
+  to_np = lambda a: numpy_helper.to_array(a) if isinstance(a, onnx.TensorProto) else a
+  return {k: ({
+    'label': k,
+    'params': {a.name: to_np(onnx.helper.get_attribute_value(a)) for a in n.attribute},
+    'type': n.op_type
+  }, list(n.input)) for n in nodes for k in n.output}
 
 def from_onnx(onnx_model):
-    from onnx import numpy_helper
-    net = {k: ({
-        'label': k,
-        'params': {a.name: MessageToDict(a) for a in n.attribute},
-        'type': n.op_type},  
-        list(n.input)) for n in onnx_model.graph.node for k in n.output}
-
-    constants = {x.name: ({'type': 'Constant', 'label': x.name, 'params': {'value': numpy_helper.to_array(x)}},[])
-                  for x in onnx_model.graph.initializer}
-    inputs = {x.name: ({'type': 'Input', 'label': x.name, 'params': MessageToDict(x)}, []) 
-                for x in onnx_model.graph.input if x.name not in constants}
-    return union(net, inputs, constants)
-
+    net = from_onnx_nodes(onnx_model.graph.node)
+    constants = from_onnx_nodes([onnx.helper.make_node('Constant', inputs=[], 
+                       outputs=[x.name], value=x) for x in onnx_model.graph.initializer])
+    inputs = {x.name: ({'type': 'Input', 'label': x.name, 'params': MessageToDict(x)}, []) for x in onnx_model.graph.input}
+    return union(inputs, constants, net)
+  
+def to_onnx(graph, name='', initializer=None):
+  from_np = lambda a: numpy_helper.from_array(a) if isinstance(a, np.ndarray) else a
+  nodes = [onnx.helper.make_node(attr['type'], inputs, [attr['label']],
+           **{k: from_np(v) for (k,v) in attr['params'].items()}) for (attr, inputs) in
+           graph.values() if attr['type'] != 'Input']
+  inputs = [ParseDict(a['params'], onnx.ValueInfoProto()) for (a,_) in 
+            graph.values() if a['type'] == 'Input']
+  outputs = []
+  onnx_graph = onnx.helper.make_graph(nodes, name, inputs, outputs, initializer=initializer)
+  return onnx.helper.make_model(onnx_graph)
 
 def from_tflow(graph_def):
     import tensorflow as tf
