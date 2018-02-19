@@ -63,7 +63,7 @@ def walk_nodes(neighbours, starting_nodes):
 def restrict(graph, inputs, outputs):
     neighbours = lambda node: (n for n in get_inputs(graph[node])
                                if (node in graph and n not in inputs))
-    return walk_nodes(neighbours, outputs)
+    return subgraph(graph, set(walk_nodes(neighbours, outputs)))
 
 
 def edges(graph):
