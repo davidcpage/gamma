@@ -88,7 +88,7 @@ def external_inputs(graph):
 
 
 def strip_inputs(graph):
-    return {n: (attr, [i for i in inputs if i not in graph.keys()])
+    return {n: (attr, [i for i in inputs if i in graph.keys()])
             for n, (attr, inputs) in graph.items()}
 
 

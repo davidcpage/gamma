@@ -35,7 +35,7 @@ def from_tflow(graph_def):
     unwrap = lambda arg: tf.make_ndarray(arg.tensor) if arg.HasField('tensor') else MessageToDict(arg)
     graph = {n.name: ({'type': n.op, 'label': n.name, 'params':
                        {k: unwrap(v) for k, v in n.attr.items()}
-                       }, [i.split(':', 1)[0] for i in n.input])
+                       }, [i.split('^', 1)[-1].split(':', 1)[0] for i in n.input])
              for n in graph_def.node}
     return reindex(graph, {k: i for (i, k) in enumerate(graph.keys())})
 
