@@ -1,6 +1,6 @@
 import numpy as np
 from google.protobuf.json_format import MessageToDict, ParseDict
-from .core import union, reindex
+from .core import union
 import onnx
 from onnx import numpy_helper
 
@@ -37,7 +37,7 @@ def from_tflow(graph_def):
                        {k: unwrap(v) for k, v in n.attr.items()}
                        }, [i.split('^', 1)[-1].split(':', 1)[0] for i in n.input])
              for n in graph_def.node}
-    return reindex(graph, {k: i for (i, k) in enumerate(graph.keys())})
+    return graph
 
 
 def to_tflow(graph):
