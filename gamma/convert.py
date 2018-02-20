@@ -1,6 +1,6 @@
 import numpy as np
 from google.protobuf.json_format import MessageToDict, ParseDict
-from .core import union
+from .core import union, reindex
 import onnx
 from onnx import numpy_helper
 
@@ -16,12 +16,15 @@ def from_onnx(onnx_model):
     net = from_onnx_nodes(onnx_model.graph.node)
     constants = from_onnx_nodes([onnx.helper.make_node('Constant', inputs=[], 
                        outputs=[x.name], value=x) for x in onnx_model.graph.initializer])
-    inputs = {x.name: ({'type': 'Input', 'label': x.name, 'params': MessageToDict(x)}, []) for x in onnx_model.graph.input}
-    return union(inputs, constants, net)
+    inputs = {x.name: ({'type': 'Input', 'label': x.name, 'params': MessageToDict(x)}, [])
+              for x in onnx_model.graph.input}
+    graph = union(inputs, constants, net)
+    return reindex(graph, {k: i for (i, k) in enumerate(graph.keys())})
   
 def to_onnx(graph, name='', initializer=None):
   from_np = lambda a: numpy_helper.from_array(a) if isinstance(a, np.ndarray) else a
   nodes = [onnx.helper.make_node(attr['type'], [str(i) for i in inputs], [str(n)],
+                                 label=attr['label'],
                                  **{k: from_np(v) for (k,v) in attr['params'].items()})
            for (n, (attr, inputs)) in graph.items()
            if attr['type'] != 'Input']
@@ -38,7 +41,7 @@ def from_tflow(graph_def):
                        {k: unwrap(v) for k, v in n.attr.items()}
                        }, [i.split('^', 1)[-1].split(':', 1)[0] for i in n.input])
              for n in graph_def.node}
-    return graph
+    return reindex(graph, {k: i for (i, k) in enumerate(graph.keys())})
 
 
 def to_tflow(graph):
