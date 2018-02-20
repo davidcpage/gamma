@@ -21,11 +21,12 @@ def from_onnx(onnx_model):
   
 def to_onnx(graph, name='', initializer=None):
   from_np = lambda a: numpy_helper.from_array(a) if isinstance(a, np.ndarray) else a
-  nodes = [onnx.helper.make_node(attr['type'], inputs, [attr['label']],
-           **{k: from_np(v) for (k,v) in attr['params'].items()}) for (attr, inputs) in
-           graph.values() if attr['type'] != 'Input']
-  inputs = [ParseDict(a['params'], onnx.ValueInfoProto()) for (a,_) in 
-            graph.values() if a['type'] == 'Input']
+  nodes = [onnx.helper.make_node(attr['type'], [str(i) for i in inputs], [str(n)],
+                                 **{k: from_np(v) for (k,v) in attr['params'].items()})
+           for (n, (attr, inputs)) in graph.items()
+           if attr['type'] != 'Input']
+  inputs = [ParseDict(a['params'], onnx.ValueInfoProto())
+            for (a,_) in graph.values() if a['type'] == 'Input']
   outputs = []
   onnx_graph = onnx.helper.make_graph(nodes, name, inputs, outputs, initializer=initializer)
   return onnx.helper.make_model(onnx_graph)
