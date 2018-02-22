@@ -27,9 +27,10 @@ unwrap_containers = {
     RepeatedScalarFieldContainer: lambda pb: [unwrap(v) for v in pb],
 }
 
-#FixMe: test and remove once everyone is on google.protobuf >= 3.5 ??
+# FIXME: test and remove once everyone is on google.protobuf >= 3.5 ??
 try:
-    from google.protobuf.pyext._message import RepeatedCompositeContainer, RepeatedScalarContainer
+    from google.protobuf.pyext._message import RepeatedCompositeContainer, RepeatedScalarContainer, MessageMapContainer
+    unwrap_containers[MessageMapContainer] = lambda pb: {k: unwrap(v) for k,v in pb.items()}
     unwrap_containers[RepeatedCompositeContainer] = lambda pb: [unwrap(v) for v in pb]
     unwrap_containers[RepeatedScalarContainer] = lambda pb: [unwrap(v) for v in pb]
 except:
