@@ -3,7 +3,6 @@ from functools import singledispatch
 from google.protobuf.descriptor import FieldDescriptor
 from google.protobuf.internal.containers import MessageMap, RepeatedCompositeFieldContainer, RepeatedScalarFieldContainer
 from google.protobuf.json_format import MessageToDict
-from google.protobuf.pyext._message import RepeatedCompositeContainer, RepeatedScalarContainer
 
 import tensorflow as tf
 from tensorflow.core.framework import tensor_pb2, tensor_shape_pb2
@@ -21,13 +20,21 @@ def enum_to_string(field, value):
         return [field.enum_type.values_by_number[v].name for v in value] 
     return field.enum_type.values_by_number[value].name    
 
+
 unwrap_containers = {
     MessageMap: lambda pb: {k: unwrap(v) for k,v in pb.items()},
     RepeatedCompositeFieldContainer: lambda pb: [unwrap(v) for v in pb],
     RepeatedScalarFieldContainer: lambda pb: [unwrap(v) for v in pb],
-    RepeatedCompositeContainer: lambda pb: [unwrap(v) for v in pb],
-    RepeatedScalarContainer: lambda pb: [unwrap(v) for v in pb],
 }
+
+#FixMe: test and remove once everyone is on google.protobuf >= 3.5 ??
+try:
+    from google.protobuf.pyext._message import RepeatedCompositeContainer, RepeatedScalarContainer
+    unwrap_containers[RepeatedCompositeContainer] = lambda pb: [unwrap(v) for v in pb]
+    unwrap_containers[RepeatedScalarContainer] = lambda pb: [unwrap(v) for v in pb]
+except:
+    pass
+    
 
 ################
 ## tensorflow
