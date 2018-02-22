@@ -1,8 +1,9 @@
 from functools import singledispatch
 
 from google.protobuf.descriptor import FieldDescriptor
-from google.protobuf.internal.containers import MessageMap, RepeatedCompositeFieldContainer
+from google.protobuf.internal.containers import MessageMap, RepeatedCompositeFieldContainer, RepeatedScalarFieldContainer
 from google.protobuf.json_format import MessageToDict
+from google.protobuf.pyext._message import RepeatedCompositeContainer, RepeatedScalarContainer
 
 import tensorflow as tf
 from tensorflow.core.framework import tensor_pb2, tensor_shape_pb2
@@ -23,6 +24,9 @@ def enum_to_string(field, value):
 unwrap_containers = {
     MessageMap: lambda pb: {k: unwrap(v) for k,v in pb.items()},
     RepeatedCompositeFieldContainer: lambda pb: [unwrap(v) for v in pb],
+    RepeatedScalarFieldContainer: lambda pb: [unwrap(v) for v in pb],
+    RepeatedCompositeContainer: lambda pb: [unwrap(v) for v in pb],
+    RepeatedScalarContainer: lambda pb: [unwrap(v) for v in pb],
 }
 
 ################

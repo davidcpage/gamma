@@ -31,7 +31,7 @@ def to_onnx(graph, name='', initializer=None):
 
 def from_tflow(graph_def):
     graph = {n['name']: ({'type': n['op'], 'label': n['name'], 'params': n.get('attr',{})}, 
-                     [i.split('^', 1)[-1].split(':', 1)[0] for i in n.get('input', [])])
+                         [i.split('^', 1)[-1].split(':', 1)[0] for i in n.get('input', [])])
              for n in unwrap(graph_def.node)}   
     return reindex(graph, {k: i for (i, k) in enumerate(graph.keys())})
 
