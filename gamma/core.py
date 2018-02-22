@@ -18,11 +18,9 @@ def gather(items):
     return dict(res)
 
 
-def assoc(dictionary, updates, inplace=False):
-    if not inplace:
-        dictionary = dictionary.copy()
-    for k, v in updates.items():
-        dictionary[k] = v
+def assoc(dictionary, key, val, inplace=False):
+    dictionary = dictionary if inplace else dictionary.copy()
+    dictionary[key] = val
     return dictionary
 
 
@@ -125,7 +123,7 @@ failure = []
 
 
 def extend(bindings, extensions):
-    return (assoc(bindings, ext, len(extensions) is 1) for ext in extensions)
+    return (assoc(bindings, key, val, len(extensions) is 1) for (key, val) in extensions)
 
 
 def edge_constraint(edge, in_edges, out_edges, bindings):
@@ -134,10 +132,10 @@ def edge_constraint(edge, in_edges, out_edges, bindings):
         return [bindings] if ((bindings[src], bindings[dst], port)
                               in in_edges.get(bindings[dst], [])) else failure
     elif dst in bindings:
-        return extend(bindings, [{src: src_node} for (src_node, _, p)
+        return extend(bindings, [(src, src_node) for (src_node, _, p)
                                  in in_edges.get(bindings[dst], []) if p == port])
     elif src in bindings:
-        return extend(bindings, [{dst: dst_node} for (_, dst_node, p)
+        return extend(bindings, [(dst, dst_node) for (_, dst_node, p)
                                  in out_edges.get(bindings[src], []) if p == port])
     else:
         raise Exception('unconstrained edge')
@@ -155,7 +153,7 @@ def node_constraint(node, pattern_node, graph, bindings):
             return unify_(get_attr(graph[b]), get_attr(pattern_node), bindings)
         return failure 
     else:
-        return [assoc(b, {node: n}, True) for n, (attr, _) in graph.items()
+        return [assoc(b, node, n, True) for n, (attr, _) in graph.items()
                     for b in unify_(attr, get_attr(pattern_node), bindings)]
  
 
