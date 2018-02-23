@@ -9,7 +9,7 @@ from itertools import chain
 def from_onnx(onnx_model):
     g = unwrap(onnx_model.graph)
     ext_inputs = ((label, params, 'Input', []) for (label, params) in g.get('input',[]))
-    constants =  ((label, {'value': v}, 'Constant', []) for (label, v) in g.get('initializer',[]))
+    constants =  ((v.name, {'value': v}, 'Constant', []) for v in g.get('initializer',[]))
     net =        ((label, dict(n.get('attribute',())), n['op_type'], n.get('input', [])) 
                    for n in g['node'] for label in n['output'])
     return {label: ({'label': label, 'params': params, 'type': type}, inputs) 

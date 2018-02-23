@@ -6,7 +6,7 @@ from google.protobuf.json_format import MessageToDict
 
 import tensorflow as tf
 from tensorflow.core.framework import tensor_pb2, tensor_shape_pb2
-
+import numpy as np
 import onnx
 
 def identity(x):
@@ -58,7 +58,15 @@ unwrap_tf = {
 #############
 ## onnx
 #############
+class onnx_array(np.ndarray):
+    def __array_finalize__(self, obj):
+        if obj is None: return
+        self.name = getattr(obj, 'name', '')
 
+def unwrap_onnx_TensorProto(pb):
+    x = onnx.numpy_helper.to_array(pb).view(onnx_array)
+    x.name = pb.name
+    return x
 
 unwrap_onnx = {
     onnx.ModelProto: unwrap_standard,
@@ -68,7 +76,7 @@ unwrap_onnx = {
     #onnx.TypeProto: unwrap_standard,
     #onnx.TypeProto.Tensor: unwrap_standard,
     onnx.AttributeProto: lambda pb: (pb.name, unwrap(onnx.helper.get_attribute_value(pb))),
-    onnx.TensorProto: lambda pb: (pb.name, onnx.numpy_helper.to_array(pb)),
+    onnx.TensorProto: unwrap_onnx_TensorProto,
 }
 
 unwrap = singledispatch(identity) #default is to do no unwrapping, making it easier to explore
