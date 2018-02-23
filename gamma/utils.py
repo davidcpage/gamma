@@ -1,6 +1,6 @@
 from pydot import Dot, Cluster, Node, Edge
 from IPython.display import display, SVG, HTML
-from gamma.core import cache, get_inputs
+from gamma.core import FuncCache, get_inputs
 
 ################
 # plotting
@@ -46,7 +46,7 @@ def parent(path):
 
 
 def heights(graph):
-    self = cache()
+    self = FuncCache()
     self.func = lambda node: 1 + max((self[n] for n in
                                       (get_inputs(graph[node]) if node in graph else ())),
                                      default=0)
@@ -77,7 +77,7 @@ def draw_pydot(nodes, edges, direction='LR', **kwargs):
         parent_graph.add_subgraph(subgraph)
         return subgraph
 
-    subgraphs = cache(lambda path: make_subgraph(
+    subgraphs = FuncCache(lambda path: make_subgraph(
         path, subgraphs[parent(path)]))
     subgraphs[''] = g = Dot(rankdir=direction, directed=True, **kwargs)
     g.set_node_defaults(

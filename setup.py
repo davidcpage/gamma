@@ -7,7 +7,7 @@ setup(
     url='https://github.com/davidcpage/gamma',
     author='David Page',
     packages=['gamma'],
-    install_requires=['pydot', 'unification'],
+    install_requires=['pydot'],
     python_requires='>=3',
     )
 

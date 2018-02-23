@@ -1,6 +1,76 @@
 from collections import defaultdict
 from itertools import count, chain
-from unification import unify, reify, var
+
+################
+# logic
+################
+
+
+class _Var(object):
+    """ Logic Variable """
+    def __init__(self, token):
+        self.token = token
+
+    def __str__(self):
+        return "~" + str(self.token)
+    __repr__ = __str__
+
+_var_cache = {} #intern _Var's
+
+
+def var(token=None):
+    try:
+        return _var_cache[token]
+    except KeyError:
+        if token is None:
+            return _Var(None)
+        _var_cache[token] = _Var(token)
+        return _var_cache[token]
+
+
+def walk(key, d):
+    while isinstance(key, _Var) and key in d:
+        key = d[key]
+    return key
+
+
+def reify(x, s):
+    if isinstance(x, _Var):
+        return reify(s[x], s) if x in s else x
+    elif isinstance(x, (tuple, list)):
+        return type(x)(reify(xx, s) for xx in x)
+    elif isinstance(x, dict):
+        return {k: reify(v, s) for k, v in x.items()}
+    return x
+
+
+class UnificationError(Exception):
+    pass
+
+
+def _unify_inplace(u, v, s):
+    u = walk(u, s)
+    v = walk(v, s)
+    #u and v could be vars, consts or (nested) datastructures of vars and consts
+    if u == v: return
+    if isinstance(u, _Var): s[u] = v; return #occurs checks are missing
+    if isinstance(v, _Var): s[v] = u; return
+    if type(u) == type(v):
+        if (isinstance(u, (list, tuple)) and len(u) == len(v)):
+            for uu, vv in zip(u, v):  
+                _unify_inplace(uu, vv, s)
+            return
+        elif (isinstance(u, dict) and u.keys() == v.keys()):
+            for key, val in u.items():
+                _unify_inplace(val, v[key], s)
+            return    
+    raise UnificationError
+
+
+def unify(u, v, s=None):
+    s = {} if s is None else s.copy()
+    _unify_inplace(u, v, s)
+    return s
 
 ################
 # dict utils
@@ -24,7 +94,7 @@ def assoc(dictionary, key, val, inplace=False):
     return dictionary
 
 
-class cache(dict):
+class FuncCache(dict):
     def __init__(self, func=None):
         self.func = func
 
@@ -118,9 +188,7 @@ def relabel(graph, label_func):
 # pattern matching
 #####################
 
-
-failure = []
-
+failure = ()
 
 def extend(bindings, extensions):
     return (assoc(bindings, key, val, len(extensions) is 1) for (key, val) in extensions)
@@ -141,22 +209,18 @@ def edge_constraint(edge, in_edges, out_edges, bindings):
         raise Exception('unconstrained edge')
 
 
-def unify_(x, y, ctxt):
-    new_ctxt = unify(x, y, ctxt)
-    return failure if new_ctxt is False else [new_ctxt]
-
-
-def node_constraint(node, pattern_node, graph, bindings):
-    if node in bindings:
-        b = bindings[node]
-        if b in graph:
-            return unify_(get_attr(graph[b]), get_attr(pattern_node), bindings)
-        return failure 
-    else:
-        return [assoc(b, node, n, True) for n, (attr, _) in graph.items()
-                    for b in unify_(attr, get_attr(pattern_node), bindings)]
+def node_constraint(node, attr, graph, bindings):
+    try:
+        n = graph[bindings[node]]
+    except KeyError:
+        print('key error')
+        return failure
+    try:
+        _unify_inplace(get_attr(n), attr, bindings)
+        return (bindings, )
+    except UnificationError:
+        return failure
  
-
 def plan_query(pattern):
     neighbours = neighbourhoods(pattern)
     nodes = list(pattern.keys())
@@ -171,16 +235,15 @@ def plan_query(pattern):
 
 def find_matches(graph, pattern):
     ins, outs = in_edges(graph), out_edges(graph)  # compute 'indices'
-    proposals = [{}]
-    for step in plan_query(pattern):
-        if isinstance(step, tuple):
-            edge = step
-            new_proposals = (edge_constraint(edge, ins, outs, p)
-                             for p in proposals)
+    query = plan_query(pattern) 
+    proposals = ({query[0]: n} for n in graph.keys()) #query[0] is starting node
+    for step in query:
+        proposals = list(proposals)
+        if isinstance(step, tuple): #step is an edge
+            new_proposals = (edge_constraint(step, ins, outs, p) for p in proposals)
         else:
-            node = step
-            new_proposals = (node_constraint(
-                node, pattern[node], graph, p) for p in proposals)
+            new_proposals = (node_constraint(step, get_attr(pattern[step]), graph, p) 
+                              for p in proposals)
         proposals = chain(*new_proposals)
     return list(proposals)
 
