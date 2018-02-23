@@ -5,22 +5,21 @@ from itertools import count, chain
 # logic
 ################
 
-_var_cache = {} #intern var's
-
-
 class var(object):
+    _cache = {}
     def __new__(cls, token):
         try:
-            return _var_cache[token]
+            return cls._cache[token]
         except KeyError:
             obj = object.__new__(cls)
             obj.token = token
-            _var_cache[token] = obj
+            cls._cache[token] = obj
             return obj
 
     def __str__(self):
         return "~" + str(self.token)
     __repr__ = __str__
+
 
 def walk(key, d):
     while isinstance(key, var) and key in d:
@@ -48,7 +47,7 @@ def _unify_inplace(u, v, s): #i.e. the bindings dict `s` gets updated in place
     u = walk(u, s)
     v = walk(v, s)
     #u and v could be vars, consts or (nested) datastructures of vars and consts
-    if (u is Wildcard or v is Wildcard): return #use type Wildcard as a wildcard. is this a good idea??
+    if (u is Wildcard or v is Wildcard): return #use type Wildcard as a wildcard. is this a good idea?
     if u == v: return
     if isinstance(u, var): s[u] = v; return #occurs checks are missing
     if isinstance(v, var): s[v] = u; return
