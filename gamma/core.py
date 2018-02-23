@@ -233,13 +233,11 @@ def find_matches(graph, pattern):
     query = plan_query(pattern) 
     proposals = ({query[0]: n} for n in graph.keys()) #query[0] is starting node
     for step in query:
-        proposals = list(proposals)
         if isinstance(step, tuple): #step is an edge
-            new_proposals = (edge_constraint(step, ins, outs, p) for p in proposals)
-        else:
-            new_proposals = (node_constraint(step, get_attr(pattern[step]), graph, p) 
-                              for p in proposals)
-        proposals = chain(*new_proposals)
+            proposals = chain(*(edge_constraint(step, ins, outs, p) for p in proposals))
+        else: #step is a node
+            proposals = chain(*(node_constraint(step, get_attr(pattern[step]), graph, p) 
+                              for p in proposals))
     return list(proposals)
 
 
