@@ -5,37 +5,31 @@ from itertools import count, chain
 # logic
 ################
 
+_var_cache = {} #intern var's
 
-class _Var(object):
-    """ Logic Variable """
-    def __init__(self, token):
-        self.token = token
+
+class var(object):
+    def __new__(cls, token):
+        try:
+            return _var_cache[token]
+        except KeyError:
+            obj = object.__new__(cls)
+            obj.token = token
+            _var_cache[token] = obj
+            return obj
 
     def __str__(self):
         return "~" + str(self.token)
     __repr__ = __str__
 
-_var_cache = {} #intern _Var's
-
-
-def var(token=None):
-    try:
-        return _var_cache[token]
-    except KeyError:
-        if token is None:
-            return _Var(None)
-        _var_cache[token] = _Var(token)
-        return _var_cache[token]
-
-
 def walk(key, d):
-    while isinstance(key, _Var) and key in d:
+    while isinstance(key, var) and key in d:
         key = d[key]
     return key
 
 
 def reify(x, s):
-    if isinstance(x, _Var):
+    if isinstance(x, var):
         return reify(s[x], s) if x in s else x
     elif isinstance(x, (tuple, list)):
         return type(x)(reify(xx, s) for xx in x)
@@ -47,14 +41,17 @@ def reify(x, s):
 class UnificationError(Exception):
     pass
 
+class Wildcard():
+    pass
 
-def _unify_inplace(u, v, s):
+def _unify_inplace(u, v, s): #i.e. the bindings dict `s` gets updated in place
     u = walk(u, s)
     v = walk(v, s)
     #u and v could be vars, consts or (nested) datastructures of vars and consts
+    if (u is Wildcard or v is Wildcard): return #use type Wildcard as a wildcard. is this a good idea??
     if u == v: return
-    if isinstance(u, _Var): s[u] = v; return #occurs checks are missing
-    if isinstance(v, _Var): s[v] = u; return
+    if isinstance(u, var): s[u] = v; return #occurs checks are missing
+    if isinstance(v, var): s[v] = u; return
     if type(u) == type(v):
         if (isinstance(u, (list, tuple)) and len(u) == len(v)):
             for uu, vv in zip(u, v):  
@@ -213,7 +210,6 @@ def node_constraint(node, attr, graph, bindings):
     try:
         n = graph[bindings[node]]
     except KeyError:
-        print('key error')
         return failure
     try:
         _unify_inplace(get_attr(n), attr, bindings)
