@@ -17,7 +17,7 @@ class var(object):
             return obj
 
     def __str__(self):
-        return "~" + str(self.token)
+        return "_" + str(self.token)
     __repr__ = __str__
 
 
@@ -33,7 +33,7 @@ def reify(x, s):
     elif isinstance(x, (tuple, list)):
         return type(x)(reify(xx, s) for xx in x)
     elif isinstance(x, dict):
-        return {k: reify(v, s) for k, v in x.items()}
+        return {reify(k, s): reify(v, s) for k, v in x.items()}
     return x
 
 
@@ -76,13 +76,27 @@ def unify(u, v, s=None):
 def union(*dicts):
     return {k: v for d in dicts for (k, v) in d.items()}
 
+def reduce_(x, val):
+    if isinstance(x, list): x.append(val)
+    elif isinstance(x, set): x.add(val)
+    elif isinstance(x, dict): x[val[0]] = val[1]
+    elif isinstance(x, int): x = x + val
+    return x
 
-def gather(items):
-    res = defaultdict(list)
+def gather(items, reducer=set):
+    res = defaultdict(reducer)
     for k, v in items:
-        res[k].append(v)
+        res[k] = reduce_(res[k], v)
     return dict(res)
 
+def nested(flat_dict):
+    res = {}
+    for path, val in flat_dict.items():
+        d = res
+        for p in path[:-1]:
+            d[p] = d = d.get(p, {})
+        d[path[-1]] = val
+    return res
 
 def assoc(dictionary, key, val, inplace=False):
     dictionary = dictionary if inplace else dictionary.copy()
@@ -103,14 +117,6 @@ class FuncCache(dict):
 # graph utils
 #################
 
-def get_attr(node):
-    return node[0]
-
-
-def get_inputs(node):
-    return node[1]
-
-
 def subgraph(graph, nodes):
     return {n: v for n, v in graph.items() if n in nodes}
 
@@ -125,58 +131,50 @@ def walk_nodes(neighbours, starting_nodes):
     
 
 def restrict(graph, inputs, outputs):
-    neighbours = lambda node: (n for n in get_inputs(graph[node])
-                                 if n not in inputs) if node in graph else []
+    neighbours = lambda node: (n for n in graph[node]['inputs']
+                                if n not in inputs) if node in graph else []
     return subgraph(graph, set(walk_nodes(neighbours, outputs)))
 
+def get_inputs(node):
+    inputs = node['inputs']
+    if isinstance(inputs, (list, tuple)):
+        return inputs
+    elif isinstance(inputs, var):
+        return []
+    raise Exception()
 
 def edges(graph):
-    return [(src, dst, port) for dst, (attr, inputs) in graph.items()
-            for port, src in enumerate(inputs)]
-
-
-def in_edges(graph):
-    return gather((e[1], e) for e in edges(graph))
-
-
-def out_edges(graph):
-    return gather((e[0], e) for e in edges(graph))
-
+    return (((src, 'out'), (dst, port)) for dst, attr in graph.items()
+            for port, src in enumerate(get_inputs(attr))) 
 
 def neighbourhoods(graph):
-    return gather((e[i], (e[1-i], e)) for e in edges(graph) for i in (0, 1))
+    return nested(gather(((e[i], e[i-1]) for e in edges(graph) for i in [0,1])))
 
 
 def external_inputs(graph):
-    return {s for (s, _, _) in edges(graph) if s not in graph.keys()}
+    return {s for ((s, _), _) in edges(graph) if s not in graph.keys()}
 
-
-def strip_inputs(graph):
-    return {n: (attr, [i for i in inputs if i in graph.keys()])
-            for n, (attr, inputs) in graph.items()}
-
-
-def strip_by_type(graph, type_):
-    remove = {k for k, (attr, inputs) in graph.items()
-              if attr['type'] == type_}
-    return {n: (attr, [i for i in inputs if i not in remove])
-            for n, (attr, inputs) in graph.items() if n not in remove}
+def strip_nodes(graph, nodes):
+    #NB: this is primarily for display purposes e.g. if you want to remove external inputs 
+    #or constants. Removing nodes in this way will typically break a computation graph.
+    return {n: dict(attr, inputs=[i for i in attr['inputs'] if i not in nodes])
+            for n, attr in graph.items() if n not in nodes}
 
 
 def reindex(graph, name_func):
     if isinstance(name_func, dict):
         d = name_func
         name_func = lambda x: d.get(x, x)
-    return {name_func(node): (attr, [name_func(i) for i in inputs])
-            for node, (attr, inputs) in graph.items()}
+    return {name_func(k): dict(attr, inputs=attr['inputs'] if isinstance(attr['inputs'], var) else 
+                [name_func(i) for i in attr['inputs']]) for k, attr in graph.items()}
 
 
 def relabel(graph, label_func):
     if isinstance(label_func, dict):
         d = label_func
         label_func = lambda x: d.get(x, x)
-    return {n: (dict(attr, label=label_func(attr['label'])), inputs)
-            for n, (attr, inputs) in graph.items()}
+    return {k: dict(attr, label=label_func(attr['label']))
+            for k, attr in graph.items()}
 
   
 
@@ -184,71 +182,42 @@ def relabel(graph, label_func):
 # pattern matching
 #####################
 
-failure = ()
-
-def extend(bindings, extensions):
-    return (assoc(bindings, key, val, len(extensions) is 1) for (key, val) in extensions)
-
-
-def edge_constraint(edge, in_edges, out_edges, bindings):
-    src, dst, port = edge
-    if dst in bindings and src in bindings:
-        return [bindings] if ((bindings[src], bindings[dst], port)
-                              in in_edges.get(bindings[dst], [])) else failure
-    elif dst in bindings:
-        return extend(bindings, [(src, src_node) for (src_node, _, p)
-                                 in in_edges.get(bindings[dst], []) if p == port])
-    elif src in bindings:
-        return extend(bindings, [(dst, dst_node) for (_, dst_node, p)
-                                 in out_edges.get(bindings[src], []) if p == port])
-    else:
-        raise Exception('unconstrained edge')
-
-
-def node_constraint(node, attr, graph, bindings):
-    try:
-        n = graph[bindings[node]]
-    except KeyError:
-        return failure
-    try:
-        _unify_inplace(get_attr(n), attr, bindings)
-        return (bindings, )
-    except UnificationError:
-        return failure
- 
-def plan_query(pattern):
-    neighbours = neighbourhoods(pattern)
-    nodes = list(pattern.keys())
-    query = []
-    starting_nodes = {nodes[-1]} #better logic here..!
-    for node in walk_nodes(lambda node: (n for (n, _) in neighbours[node]), starting_nodes):
-        if node in nodes:
-            query.append(node)
-        query.extend(edge for _, edge in neighbours[node] if edge not in query)
+def plan_query(pattern, graph):
+    graph_nbrs = neighbourhoods(graph)
+    pattern_nbrs = neighbourhoods(pattern)
+    starting_node = list(pattern.keys())[-1] #better logic here..!
+    query = [(starting_node, lambda p: list(graph.keys()))]
+    for node in walk_nodes(lambda node: (n for nbrs in pattern_nbrs[node].values() 
+        for (n, port) in nbrs), {starting_node}):
+        if node in pattern:
+            query.append((pattern[node], lambda p, node=node: (graph[p[node]],))) 
+        query.extend(
+            (nbr, lambda p, node=node, port=port: graph_nbrs[p[node]].get(port, ())) 
+              for port, nbrs in pattern_nbrs[node].items() for nbr in nbrs)
     return query
+    
+def _match(pattern, target, s):
+    try:
+        s = unify(pattern, target, s)
+        return (s, )
+    except UnificationError:
+        return ()
 
-
-def find_matches(graph, pattern):
-    ins, outs = in_edges(graph), out_edges(graph)  # compute 'indices'
-    query = plan_query(pattern) 
-    proposals = ({query[0]: n} for n in graph.keys()) #query[0] is starting node
-    for step in query:
-        if isinstance(step, tuple): #step is an edge
-            proposals = chain(*(edge_constraint(step, ins, outs, p) for p in proposals))
-        else: #step is a node
-            proposals = chain(*(node_constraint(step, get_attr(pattern[step]), graph, p) 
-                              for p in proposals))
+def search(pattern, graph):
+    proposals = [{}]
+    for (pat, candidates) in plan_query(pattern, graph):
+        proposals = chain(*(_match(pat, candidate, p) for p in proposals for candidate in candidates(p)))
     return list(proposals)
 
 
 def apply_rule(graph, rule):
     LHS, RHS = rule
-    matches = find_matches(graph, LHS)
+    matches = search(LHS, graph)
     # remove matched nodes except for inputs
     remove = {n for match in matches for k, n in match.items() if k in LHS}
     # generate names for nodes to be added to the graph
     IDs = filter(lambda key: key not in graph, count(1))
-    add = [reify(reindex(RHS, union(dict(zip(RHS.keys(), IDs)), match)), match)
+    add = [reify(reindex(RHS, dict(zip((k for k in RHS.keys() if not isinstance(k, var)), IDs))), match)
            for match in matches]
     return union({k: v for k, v in graph.items() if k not in remove}, *add)
 

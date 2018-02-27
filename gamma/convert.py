@@ -10,29 +10,35 @@ def make_tensor_value_info(name, elem_type, *args, **kwargs):
     elem_type = onnx.TensorProto.DESCRIPTOR.enum_types_by_name['DataType'].values_by_name[elem_type].number
     return onnx.helper.make_tensor_value_info(name, elem_type, *args, **kwargs)
 
+
+_make_node = lambda type, params, label, inputs: {
+                'type': type, 'params': params, 'label': label, 'inputs': inputs}
+
+
 def from_onnx(onnx_model):
     g = unwrap(onnx_model.graph)
-    ext_inputs = ((label, params, 'Input', []) for (label, params) in g.get('input',[]))
-    constants =  ((v.name, {'value': v}, 'Constant', []) for v in g.get('initializer',[]))
-    net =        ((label, dict(n.get('attribute',())), n['op_type'], n.get('input', [])) 
+    ext_inputs = (('Input', params, label, []) for (label, params) in g.get('input',[]))
+    constants =  (('Constant', {'value': v}, v.name, []) for v in g.get('initializer',[]))
+    net =        ((n['op_type'], dict(n.get('attribute',())), label, n.get('input', [])) 
                    for n in g['node'] for label in n['output'])
-    return {label: ({'label': label, 'params': params, 'type': type}, inputs)
-            for (label, params, type, inputs) in chain(ext_inputs, constants, net)}
+    return {l: _make_node(t, p, l, i) for (t, p, l, i) in chain(ext_inputs, constants, net)}
+
 
 def to_onnx(graph, name, outputs=[], initializer=None):
     from_np = lambda a: numpy_helper.from_array(a) if isinstance(a, np.ndarray) else a
-    nodes = [onnx.helper.make_node(attr['type'], [str(i) for i in inputs], [str(n)],
+    nodes = [onnx.helper.make_node(attr['type'], [str(i) for i in attr['inputs']], [str(n)],
                                    **{k: from_np(v) for (k,v) in attr['params'].items()})
-             for (n, (attr, inputs)) in graph.items() if attr['type'] != 'Input']
+             for (n, attr) in graph.items() if attr['type'] != 'Input']
     inputs = [make_tensor_value_info(str(n), **a['params'])
-              for (n,(a,_)) in graph.items() if a['type'] == 'Input']
+              for (n, a) in graph.items() if a['type'] == 'Input']
     outputs = [make_tensor_value_info(str(n), **a)
-               for (n,a) in outputs]
+               for (n, a) in outputs]
     onnx_graph = onnx.helper.make_graph(nodes, name, inputs, outputs, initializer=initializer)
     return onnx.helper.make_model(onnx_graph)
 
+
 def from_tflow(graph_def):
-    graph = {n['name']: ({'type': n['op'], 'label': n['name'], 'params': n.get('attr',{})}, 
+    graph = {n['name']: _make_node(n['op'], n.get('attr',{}), n['name'], 
                          [i.split('^', 1)[-1].split(':', 1)[0] for i in n.get('input', [])])
              for n in unwrap(graph_def.node)}   
     return reindex(graph, {k: i for (i, k) in enumerate(graph.keys())})
@@ -45,6 +51,6 @@ def to_tflow(graph):
              if isinstance(arg, np.ndarray) else arg)
     nodes = [{'name': attr['label'], 'op': attr['type'],
               'attr': {k: wrap(v) for (k, v) in attr['params'].items()},
-              'input': [name_lookup(i) for i in inputs]}
-             for name, (attr, inputs) in graph.items()]
+              'input': [name_lookup(i) for i in attr['inputs']]}
+             for name, attr in graph.items()]
     return ParseDict({'node': nodes, 'library': {}}, tf.GraphDef())

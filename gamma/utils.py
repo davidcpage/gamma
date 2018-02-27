@@ -57,15 +57,15 @@ def draw(graph, subgraphs=None, legend=True, scale=1, **kwargs):
     height = max(heights(graph).values())
     size = max(len(graph)/height, (height-0.3))*scale/1.5
 
-    nodes = [(node, str(attr['label']),
-              {'tooltip': '%s %s %r' % (node, attr['type'], attr['params']),
+    nodes = [(str(k), str(attr['label']),
+              {'tooltip': '%s %s %r' % (str(k), attr['type'], attr['params']),
                'fillcolor': COLORS[attr['type']],
-               }) for node, (attr, _) in graph.items()]
-    edges = ((src, dst, {}) for dst, (_, inputs) in graph.items()
-             for port, src in enumerate(inputs))
+               }) for k, attr in graph.items()]
+    edges = ((str(src), str(k), {}) for k, n in graph.items()
+             for port, src in enumerate(get_inputs(n)))
     g = draw_pydot(nodes, edges, subgraphs=subgraphs, size=size, **kwargs)
     if legend:
-        types = {attr['type'] for _, (attr, _) in graph.items()}
+        types = {n['type'] for n in graph.values()}
         display(HTML(ColorMap._repr_html_({t: COLORS[t] for t in types})))
     display(SVG(g))
 
