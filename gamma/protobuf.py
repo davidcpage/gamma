@@ -69,8 +69,9 @@ def unwrap_onnx_TensorProto(pb):
     return x
 
 def unwrap_onnx_ValueInfoProto(pb):
+    onnx_type = lambda t: onnx.TensorProto.DESCRIPTOR.enum_types_by_name['DataType'].values_by_number[t].name
     if pb.type.HasField('tensor_type'):
-        x = { 'elem_type': pb.type.tensor_type.elem_type,
+        x = { 'elem_type': onnx_type(pb.type.tensor_type.elem_type),
               'shape':     [dim.dim_value for dim in pb.type.tensor_type.shape.dim] }
     else:
         # NOTE:  DNN-only implementations of ONNX MAY elect to not support non-tensor values
