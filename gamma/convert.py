@@ -6,26 +6,28 @@ from onnx import numpy_helper
 from .protobuf import unwrap
 from itertools import chain
 
+def make_tensor_value_info(name, elem_type, *args, **kwargs):
+    elem_type = onnx.TensorProto.DESCRIPTOR.enum_types_by_name['DataType'].values_by_name[elem_type].number
+    return onnx.helper.make_tensor_value_info(name, elem_type, *args, **kwargs)
+
 def from_onnx(onnx_model):
     g = unwrap(onnx_model.graph)
     ext_inputs = ((label, params, 'Input', []) for (label, params) in g.get('input',[]))
     constants =  ((v.name, {'value': v}, 'Constant', []) for v in g.get('initializer',[]))
     net =        ((label, dict(n.get('attribute',())), n['op_type'], n.get('input', [])) 
                    for n in g['node'] for label in n['output'])
-    return {label: ({'label': label, 'params': params, 'type': type}, inputs) 
+    return {label: ({'label': label, 'params': params, 'type': type}, inputs)
             for (label, params, type, inputs) in chain(ext_inputs, constants, net)}
-    
 
-def to_onnx(graph, name='', initializer=None):
+def to_onnx(graph, name, outputs=[], initializer=None):
     from_np = lambda a: numpy_helper.from_array(a) if isinstance(a, np.ndarray) else a
     nodes = [onnx.helper.make_node(attr['type'], [str(i) for i in inputs], [str(n)],
-                                 #label=attr['label'],
-                                 **{k: from_np(v) for (k,v) in attr['params'].items()})
-           for (n, (attr, inputs)) in graph.items()
-           if attr['type'] != 'Input']
-    inputs = [ParseDict(a['params'], onnx.ValueInfoProto())
-            for (a,_) in graph.values() if a['type'] == 'Input']
-    outputs = []
+                                   **{k: from_np(v) for (k,v) in attr['params'].items()})
+             for (n, (attr, inputs)) in graph.items() if attr['type'] != 'Input']
+    inputs = [make_tensor_value_info(str(n), **a['params'])
+              for (n,(a,_)) in graph.items() if a['type'] == 'Input']
+    outputs = [make_tensor_value_info(str(n), **a)
+               for (n,a) in outputs]
     onnx_graph = onnx.helper.make_graph(nodes, name, inputs, outputs, initializer=initializer)
     return onnx.helper.make_model(onnx_graph)
 

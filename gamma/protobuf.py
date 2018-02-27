@@ -68,11 +68,26 @@ def unwrap_onnx_TensorProto(pb):
     x.name = pb.name
     return x
 
+def unwrap_onnx_ValueInfoProto(pb):
+    onnx_type = lambda t: onnx.TensorProto.DESCRIPTOR.enum_types_by_name['DataType'].values_by_number[t].name
+    if pb.type.HasField('tensor_type'):
+        x = { 'elem_type': onnx_type(pb.type.tensor_type.elem_type),
+              'shape':     [dim.dim_value for dim in pb.type.tensor_type.shape.dim] }
+    else:
+        # NOTE:  DNN-only implementations of ONNX MAY elect to not support non-tensor values
+        #        as input and output to graphs and nodes. These types are needed to naturally
+        #        support classical ML operators.  DNN operators SHOULD restrict their input
+        #        and output types to tensors.
+        x = MessageToDict(pb) # too lazy to drill deeper into this for now
+    if pb.doc_string:
+        x['doc_string'] = pb.doc_string
+    return (pb.name, x)
+
 unwrap_onnx = {
     onnx.ModelProto: unwrap_standard,
     onnx.NodeProto: unwrap_standard,
     onnx.GraphProto: unwrap_standard,
-    onnx.ValueInfoProto: lambda pb: (pb.name, MessageToDict(pb)), #too lazy to drill deeper into this for now
+    onnx.ValueInfoProto: unwrap_onnx_ValueInfoProto,
     #onnx.TypeProto: unwrap_standard,
     #onnx.TypeProto.Tensor: unwrap_standard,
     onnx.AttributeProto: lambda pb: (pb.name, unwrap(onnx.helper.get_attribute_value(pb))),
