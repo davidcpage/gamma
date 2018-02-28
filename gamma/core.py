@@ -1,4 +1,4 @@
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from itertools import count, chain
 
 ################
@@ -135,7 +135,20 @@ def walk_nodes(neighbours, starting_nodes):
         visited.add(node)
         frontier.update(n for n in neighbours(node) if n not in visited)
         yield node
-    
+
+
+def depths(graph):
+    self = FuncCache()
+    self.func = lambda node: 1 + max((self[n] for n in
+                                      (get_inputs(graph[node]) if node in graph else ())),
+                                     default=0)
+    return {n: self[n] for n in graph}
+
+
+def topological_sort(graph):
+    return OrderedDict(n for _, n in sorted((h, (k, graph[k])) 
+            for (k, h) in depths(graph).items()))
+
 
 def restrict(graph, inputs, outputs):
     neighbours = lambda node: (n for n in graph[node]['inputs']

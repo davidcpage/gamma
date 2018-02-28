@@ -1,6 +1,6 @@
 from pydot import Dot, Cluster, Node, Edge
 from IPython.display import display, SVG, HTML
-from gamma.core import FuncCache, get_inputs
+from gamma.core import FuncCache, get_inputs, depths
 
 ################
 # plotting
@@ -45,16 +45,8 @@ def parent(path):
     return split(path)[0]
 
 
-def heights(graph):
-    self = FuncCache()
-    self.func = lambda node: 1 + max((self[n] for n in
-                                      (get_inputs(graph[node]) if node in graph else ())),
-                                     default=0)
-    return {n: self[n] for n in graph}
-
-
 def draw(graph, subgraphs=None, legend=True, scale=1, **kwargs):
-    height = max(heights(graph).values())
+    height = max(depths(graph).values())
     size = max(len(graph)/height, (height-0.3))*scale/1.5
 
     nodes = [(str(k), str(attr['label']),
