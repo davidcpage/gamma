@@ -49,7 +49,13 @@ def _unify_inplace(u, v, s): #i.e. the bindings dict `s` gets updated in place
     v = walk(v, s)
     #u and v could be vars, consts or (nested) datastructures of vars and consts
     if (u is Wildcard or v is Wildcard): return #use type Wildcard as a wildcard. is this a good idea?
-    if (u is v) or ((u == v) is True): return #should be u==v but numpy equality is wierd
+    if (u is v): return
+    #numpy `==` is broken and breaks `== `for nested structure containing numpy arrays
+    #so we have to test `==` in a try block...
+    try:
+        if u == v: return
+    except ValueError: 
+        pass    
     if isinstance(u, var): s[u] = v; return #occurs checks are missing
     if isinstance(v, var): s[v] = u; return
     if type(u) == type(v):
@@ -188,13 +194,13 @@ def plan_query(pattern, graph):
     pattern_nbrs = neighbourhoods(pattern)
     starting_node = list(pattern.keys())[-1] #better logic here..!
     query = [(starting_node, lambda p: list(graph.keys()))]
-    for node in walk_nodes(lambda node: (n for nbrs in pattern_nbrs[node].values() 
+    for node in walk_nodes(lambda node: (n for nbrs in pattern_nbrs.get(node,{}).values() 
         for (n, port) in nbrs), {starting_node}):
         if node in pattern:
             query.append((pattern[node], lambda p, node=node: (graph[p[node]],))) 
         query.extend(
             (nbr, lambda p, node=node, port=port: graph_nbrs[p[node]].get(port, ())) 
-              for port, nbrs in pattern_nbrs[node].items() for nbr in nbrs)
+              for port, nbrs in pattern_nbrs.get(node,{}).items() for nbr in nbrs)
     return query
     
 def _match(pattern, target, s):
