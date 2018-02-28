@@ -1,4 +1,4 @@
-from collections import defaultdict, OrderedDict
+from collections import defaultdict
 from itertools import count, chain
 
 ################
@@ -146,7 +146,7 @@ def depths(graph):
 
 
 def topological_sort(graph):
-    return OrderedDict(n for _, n in sorted((h, (k, graph[k])) 
+    return (n for _, n in sorted((h, (k, graph[k])) 
             for (k, h) in depths(graph).items()))
 
 
