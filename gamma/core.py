@@ -43,12 +43,13 @@ class UnificationError(Exception):
 class Wildcard():
     pass
 
+
 def _unify_inplace(u, v, s): #i.e. the bindings dict `s` gets updated in place
     u = walk(u, s)
     v = walk(v, s)
     #u and v could be vars, consts or (nested) datastructures of vars and consts
     if (u is Wildcard or v is Wildcard): return #use type Wildcard as a wildcard. is this a good idea?
-    if u == v: return
+    if (u is v) or ((u == v) is True): return #should be u==v but numpy equality is wierd
     if isinstance(u, var): s[u] = v; return #occurs checks are missing
     if isinstance(v, var): s[v] = u; return
     if type(u) == type(v):
