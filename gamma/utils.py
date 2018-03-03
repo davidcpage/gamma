@@ -1,13 +1,17 @@
 from pydot import Dot, Cluster, Node, Edge
 from IPython.display import display, SVG, HTML
 from gamma.core import FuncCache, get_inputs, depths
+import os
+from urllib.request import urlretrieve
+import tarfile
+import zipfile
 
 ################
 # plotting
 ################
 
 
-palette = ('#8dd3c7', '#ffffb3', '#bebada', '#fb8072', '#80b1d3', '#fdb462',
+PALETTE = ('#8dd3c7', '#ffffb3', '#bebada', '#fb8072', '#80b1d3', '#fdb462',
            '#b3de69', '#fccde5', '#bc80bd', '#ccebc5', '#ffed6f', '#1f78b4',
            '#33a02c', '#e31a1c', '#ff7f00', '#4dddf8',
            '#e66493', '#b07b87', '#f7397b', '#4e90e3', '#dea05e', '#d0c281',
@@ -16,14 +20,14 @@ palette = ('#8dd3c7', '#ffffb3', '#bebada', '#fb8072', '#80b1d3', '#fdb462',
 
 
 class ColorMap(dict):
-    def __init__(self, palette=palette):
+    def __init__(self, palette=PALETTE):
         self.palette = palette
 
     def __missing__(self, key):
         self[key] = self.palette[len(self) % len(self.palette)]
         return self[key]
 
-    def _repr_html_(self):
+    def html(self):
         s = ('<div style="margin:2px;width:100px;height:15px;'
              'display:inline-block;line-height:15px;'
              'background-color:{};border-radius:9px;border-style:solid;'
@@ -32,6 +36,7 @@ class ColorMap(dict):
              'text-align:center;overflow:hidden;">{}</div></div>')
         return ''.join((s.format(color, name) for name, color in self.items()))
 
+    _repr_html_ = html
 
 COLORS = ColorMap()
 
@@ -58,7 +63,7 @@ def draw(graph, subgraphs=None, legend=True, scale=1, **kwargs):
     g = draw_pydot(nodes, edges, subgraphs=subgraphs, size=size, **kwargs)
     if legend:
         types = {n['type'] for n in graph.values()}
-        display(HTML(ColorMap._repr_html_({t: COLORS[t] for t in types})))
+        display(HTML(ColorMap.html({t: COLORS[t] for t in types})))
     display(SVG(g))
 
 
@@ -82,3 +87,26 @@ def draw_pydot(nodes, edges, direction='LR', **kwargs):
         g.add_edge(Edge(src, dst, **attr))
 
     return g.create_svg()
+
+
+def get_file(fname, origin, cache_dir='~/.gamma'):
+    cache_dir = os.path.expanduser(cache_dir)
+    if not os.path.exists(cache_dir):
+        os.makedirs(cache_dir)
+    fpath = os.path.join(cache_dir, fname)
+    sfx = ''
+    for suffix in ('.tar.gz','.tar.bz', 'tar'):
+        if origin.endswith(suffix) and not fpath.endswith(suffix):
+            sfx = suffix
+    if not os.path.exists(fpath+sfx):
+        print('Downloading from', origin)
+        urlretrieve(origin, fpath+sfx)
+    if not os.path.exists(fpath):
+        if tarfile.is_tarfile(fpath+sfx):
+            with tarfile.open(fpath+sfx) as archive:
+                archive.extractall(cache_dir)
+        elif zipfile.is_zipfile(fpath+sfx):
+            with zipfile.ZipFile(fpath+sfx) as archive:
+                archive.extractall(cache_dir)
+    return fpath
+
