@@ -5,6 +5,7 @@ import os
 from urllib.request import urlretrieve
 import tarfile
 import zipfile
+from tqdm import tqdm
 
 ################
 # plotting
@@ -89,24 +90,29 @@ def draw_pydot(nodes, edges, direction='LR', **kwargs):
     return g.create_svg()
 
 
+
 def get_file(fname, origin, cache_dir='~/.gamma'):
-    cache_dir = os.path.expanduser(cache_dir)
-    if not os.path.exists(cache_dir):
-        os.makedirs(cache_dir)
-    fpath = os.path.join(cache_dir, fname)
+    fpath = os.path.join(os.path.expanduser(cache_dir), fname)
+    basedir = os.path.dirname(fpath)
+    if not os.path.exists(basedir):
+        os.makedirs(basedir)
     sfx = ''
     for suffix in ('.tar.gz','.tar.bz', 'tar'):
         if origin.endswith(suffix) and not fpath.endswith(suffix):
             sfx = suffix
     if not os.path.exists(fpath+sfx):
-        print('Downloading from', origin)
-        urlretrieve(origin, fpath+sfx)
+        desc = f'Downloading from {origin}'
+        with tqdm(unit='B', unit_scale=True, miniters=1, desc=desc) as pbar:
+            def reporthook(blocknum, bs, size):
+                pbar.total = size
+                pbar.update(blocknum * bs - pbar.n)
+            urlretrieve(origin, fpath+sfx, reporthook=reporthook)
     if not os.path.exists(fpath):
         if tarfile.is_tarfile(fpath+sfx):
             with tarfile.open(fpath+sfx) as archive:
-                archive.extractall(cache_dir)
+                archive.extractall(basedir)
         elif zipfile.is_zipfile(fpath+sfx):
             with zipfile.ZipFile(fpath+sfx) as archive:
-                archive.extractall(cache_dir)
+                archive.extractall(basedir)
     return fpath
 
