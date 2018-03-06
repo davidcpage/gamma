@@ -1,5 +1,5 @@
 from collections import defaultdict
-from itertools import count, chain
+from itertools import count, chain, islice
 
 ################
 # logic
@@ -181,12 +181,17 @@ def strip_nodes(graph, nodes):
             for n, attr in graph.items() if n not in nodes}
 
 
+def truncate(graph, n):
+    #truncate the graph to first n nodes by topological order - useful for inspecting/plotting
+    return dict(islice(topological_sort(graph), n))
+
 def reindex(graph, name_func):
     if isinstance(name_func, dict):
         d = name_func
         name_func = lambda x: d.get(x, x)
-    return {name_func(k): dict(attr, inputs=attr['inputs'] if isinstance(attr['inputs'], var) else 
-                [name_func(i) for i in attr['inputs']]) for k, attr in graph.items()}
+    return {name_func(k): dict(attr, inputs=attr['inputs'] if 
+            isinstance(attr['inputs'], var) else 
+            [name_func(i) for i in attr['inputs']]) for k, attr in graph.items()}
 
 
 def relabel(graph, label_func):
@@ -197,6 +202,16 @@ def relabel(graph, label_func):
             for k, attr in graph.items()}
 
   
+def make_node(type, params=None, label='', inputs=None):
+    params = {} if params is None else params
+    inputs = [] if inputs is None else inputs
+    return {'type': type, 'params': params, 'label': label, 'inputs': inputs}
+
+
+def make_pattern(graph):
+    return {var(k): make_node(a['type'], var(f'{k}_params'), var(a['label']), 
+             [var(x) for x in a['inputs']]) 
+      for k, a in graph.items()}
 
 #####################
 # pattern matching
@@ -237,8 +252,8 @@ def apply_rule(graph, rule):
     remove = {n for match in matches for k, n in match.items() if k in LHS}
     # generate names for nodes to be added to the graph
     IDs = filter(lambda key: key not in graph, count(1))
-    add = [reify(reindex(RHS, dict(zip((k for k in RHS.keys() if not isinstance(k, var)), IDs))), match)
-           for match in matches]
+    add = [reify(reindex(RHS, dict(zip((k for k in RHS.keys() 
+                if not isinstance(k, var)), IDs))), match)
+                    for match in matches]
     return union({k: v for k, v in graph.items() if k not in remove}, *add)
-
 
