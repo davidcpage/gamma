@@ -1,6 +1,6 @@
-from pydot import Dot, Cluster, Node, Edge
+import pydot
 from IPython.display import display, SVG, HTML
-from gamma.core import FuncCache, get_inputs, depths
+from gamma.core import FuncCache, input_nodes, depths
 import os
 from urllib.request import urlretrieve
 import tarfile
@@ -15,14 +15,15 @@ from tqdm import tqdm
 PALETTE = ('#8dd3c7', '#ffffb3', '#bebada', '#fb8072', '#80b1d3', '#fdb462',
            '#b3de69', '#fccde5', '#bc80bd', '#ccebc5', '#ffed6f', '#1f78b4',
            '#33a02c', '#e31a1c', '#ff7f00', '#4dddf8',
-           '#e66493', '#b07b87', '#f7397b', '#4e90e3', '#dea05e', '#d0c281',
+           '#e66493', '#b07b87',  '#4e90e3', '#dea05e', '#d0c281',
            '#f0e189', '#e9e8b1', '#e0eb71', '#bbd2a4', '#6ed641', '#57eb9c',
            '#3ca4d4', '#92d5e7', '#b15928')
 
 
 class ColorMap(dict):
-    def __init__(self, palette=PALETTE):
-        self.palette = palette
+    def __init__(self, *args, **kwargs):
+        dict.__init__(self, *args, **kwargs)
+        self.palette = PALETTE
 
     def __missing__(self, key):
         self[key] = self.palette[len(self) % len(self.palette)]
@@ -51,43 +52,44 @@ def parent(path):
     return split(path)[0]
 
 
-def draw(graph, subgraphs=None, legend=True, scale=1, **kwargs):
+def draw(graph, legend=True, scale=1, **kwargs):
     height = max(depths(graph).values())
     size = max(len(graph)/height, (height-0.3))*scale/1.5
 
-    nodes = [(str(k), str(attr['label']),
-              {'tooltip': '%s %s %r' % (str(k), attr['type'], attr['params']),
+    sanitise = lambda k: '_graph_' if k == 'graph' else str(k) #pydot doesn't like nodes named 'graph'
+    nodes = [(sanitise(k), str(attr['label']),
+              {'tooltip': '%s %s %.1000r' % (str(k), attr['type'], attr['params']),
                'fillcolor': COLORS[attr['type']],
                }) for k, attr in graph.items()]
-    edges = ((str(src), str(k), {}) for k, n in graph.items()
-             for port, src in enumerate(get_inputs(n)))
-    g = draw_pydot(nodes, edges, subgraphs=subgraphs, size=size, **kwargs)
+    edges = ((sanitise(src), sanitise(k), {}) for k, n in graph.items()
+             for src in input_nodes(n))
+    g = draw_pydot(nodes, edges, size=size, **kwargs)
     if legend:
-        types = {n['type'] for n in graph.values()}
+        types = {a['type'] for a in graph.values()}
         display(HTML(ColorMap.html({t: COLORS[t] for t in types})))
     display(SVG(g))
 
 
 def draw_pydot(nodes, edges, direction='LR', **kwargs):
     def make_subgraph(path, parent_graph):
-        subgraph = Cluster(
+        subgraph = pydot.Cluster(
            path, label=split(path)[1], style='rounded, filled', fillcolor='#77777744')
         parent_graph.add_subgraph(subgraph)
         return subgraph
 
     subgraphs = FuncCache(lambda path: make_subgraph(
         path, subgraphs[parent(path)]))
-    subgraphs[''] = g = Dot(rankdir=direction, directed=True, **kwargs)
+    subgraphs[''] = g = pydot.Dot(rankdir=direction, directed=True, **kwargs)
     g.set_node_defaults(
         shape='box', style='rounded, filled', fillcolor='#ffffff')
 
     for node, path, attr in nodes:
         p, stub = split(path)
-        subgraphs[p].add_node(Node(name=node, label=stub, **attr))
+        subgraphs[p].add_node(pydot.Node(name=node, label=stub, **attr))
     for src, dst, attr in edges:
-        g.add_edge(Edge(src, dst, **attr))
+        g.add_edge(pydot.Edge(src, dst, **attr))
 
-    return g.create_svg()
+    return g.create(format='svg')
 
 
 
