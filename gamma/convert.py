@@ -3,7 +3,7 @@ import numpy as np
 from google.protobuf.json_format import ParseDict, MessageToDict
 import onnx
 from onnx import numpy_helper
-from .core import reindex, make_node
+from .core import reindex, make_node_attr
 from .protobuf import unwrap
 
 def make_tensor_value_info(name, elem_type, *args, **kwargs):
@@ -17,7 +17,7 @@ def from_onnx(onnx_model):
     constants =  (('Constant', {'value': v}, v.name, []) for v in g.get('initializer',[]))
     net =        ((n['op_type'], dict(n.get('attribute',())), label, n.get('input', [])) 
                    for n in g['node'] for label in n['output'])
-    return {l: make_node(t, p, l, i) for (t, p, l, i) in chain(ext_inputs, constants, net)}
+    return {l: make_node_attr(t, p, l, i) for (t, p, l, i) in chain(ext_inputs, constants, net)}
 
 
 def to_onnx(graph, name, outputs=None, initializer=None):
@@ -34,7 +34,7 @@ def to_onnx(graph, name, outputs=None, initializer=None):
 
 
 def from_tflow(graph_def):
-    graph = {n['name']: make_node(n['op'], n.get('attr', {}), n['name'], 
+    graph = {n['name']: make_node_attr(n['op'], n.get('attr', {}), n['name'], 
                          [i.split('^', 1)[-1].split(':', 1)[0] for i in n.get('input', [])])
              for n in unwrap(graph_def.node)}   
     return reindex(graph, {k: i for (i, k) in enumerate(graph.keys())})
