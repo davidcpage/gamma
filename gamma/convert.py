@@ -37,8 +37,8 @@ def from_tflow(graph_def):
     graph = {n['name']: make_node_attr(n['op'], n.get('attr', {}), n['name'], 
                          [i.split('^', 1)[-1].split(':', 1)[0] for i in n.get('input', [])])
              for n in unwrap(graph_def.node)}   
-    return reindex(graph, {k: i for (i, k) in enumerate(graph.keys())})
-
+    return reindex(graph)
+   
 
 def to_tflow(graph):
     import tensorflow as tf

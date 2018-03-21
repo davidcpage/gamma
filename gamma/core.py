@@ -104,6 +104,7 @@ def nested(flat_dict):
         d[path[-1]] = val
     return res
 
+
 def assoc(dictionary, key, val, inplace=False):
     dictionary = dictionary if inplace else dictionary.copy()
     dictionary[key] = val
@@ -147,7 +148,7 @@ def depths(graph):
 
 
 def topological_sort(graph):
-    return (x for _, _, x in sorted((depth, i, (node, graph[node])) 
+    return ((n, a) for _, _, (n, a) in sorted((depth, i, (node, graph[node])) 
             for i, (node, depth) in enumerate(depths(graph).items())))
 
 
@@ -157,25 +158,22 @@ def restrict(graph, inputs, outputs):
     return subgraph(graph, set(walk_nodes(neighbours, outputs)))
 
 
-def input_paths(node_attr):
-    return [x if isinstance(x, tuple) else (x, 'out') for x in node_attr['inputs']]
-
-
 def input_nodes(node_attr):
-    return [x[0] if isinstance(x, tuple) else x for x in node_attr['inputs']]
+    return node_attr['inputs']
  
 
 def edges(graph):
-    return ((src_path, (dst_node, dst_port)) for dst_node, dst_attr in graph.items()
-            for dst_port, src_path in enumerate(input_paths(dst_attr))) 
+    return ((src, (dst_node, dst_port)) for dst_node, dst_attr in graph.items()
+            for dst_port, src in enumerate(input_nodes(dst_attr))) 
 
 
 def neighbourhoods(graph):
-    return nested(gather(((e[i], e[i-1]) for e in edges(graph) for i in [0,1])))
+    edges_ = (((src, 'out'), (dst, dst_port)) for src, (dst, dst_port) in edges(graph))
+    return nested(gather(((e[i], e[i-1]) for e in edges_ for i in [0,1])))
 
 
-def external_inputs(graph):
-    return {s for node_attr in graph.values() for s in input_nodes(node_attr) if s not in graph.keys()}
+def external_inputs(graph, type_=set):
+    return type_(s for node_attr in graph.values() for s in input_nodes(node_attr) if s not in graph.keys())
  
 
 def strip(graph, nodes=external_inputs):
@@ -192,11 +190,17 @@ def truncate(graph, k):
     return dict(islice(topological_sort(graph), k))
 
 
-def reindex(graph, name_func):
-    f = (lambda x: name_func.get(x, x)) if isinstance(name_func, dict) else name_func
-    map_inputs = lambda inputs: (inputs if isinstance(inputs, var) else 
-        [(f(i[0]),) + i[1:] if isinstance(i, tuple) else f(i) for i in inputs])
-    return {f(node): dict(attr, inputs=map_inputs(attr['inputs'])) for node, attr in graph.items()}
+def new_node_ids(graph):
+    inputs = external_inputs(graph)
+    ids = filter(lambda key: key not in inputs, count(1))
+    return dict(zip((n for n, _ in topological_sort(graph)), ids))
+
+
+def reindex(graph, node_map=None):
+    node_map = new_node_ids(graph) if node_map is None else node_map
+    f = lambda x: node_map.get(x, x)
+    map_inputs = lambda inputs: (inputs if isinstance(inputs, var) else [f(i) for i in inputs])
+    return {f(node): dict(attr, inputs=map_inputs(input_nodes(attr))) for node, attr in graph.items()}
 
 
 def relabel(graph, label_func):
@@ -217,6 +221,32 @@ def make_pattern(graph):
     return {var(n): make_node_attr(a['type'], var(f'{n}_params'), var(a['label']), 
              [var(x) for x in a['inputs']]) 
       for n, a in graph.items()}
+
+
+def make_subgraph(nodes, label, input_names=None):
+    inputs = list(external_inputs(nodes))
+    input_names = input_names or [f'in{i}' for i in range(len(inputs))]
+    nodes = reindex(nodes, dict(zip(inputs, input_names)))
+    return make_node_attr('Graph', {'nodes': nodes, 'input_names': input_names}, label, inputs)
+
+
+def move_to_subgraphs(groups, graph):
+    groups = [(group_name, uid(), {n: graph[n] for n in nodes}) for group_name, nodes in groups]
+    subgraphs = {id_: make_subgraph(nodes, group_name) for group_name, id_, nodes in groups}
+    remove = {n for _, _, nodes in groups for n in nodes.keys()}
+    g = union({n: a for n, a in graph.items() if n not in remove}, subgraphs)
+    inputs = {n for a in g.values() for n in input_nodes(a)}
+    ports = {n: make_node_attr('Port', {'node': n}, a['label'], [id_]) for group_name, id_, nodes in groups for n, a in nodes.items() if n in inputs}  
+    return reindex(union(g, ports))
+
+
+def collapse(graph, levels=2):
+    prefix = lambda label: '/'.join(label.split('/', levels)[:levels])
+    groups = gather((prefix(a['label']), n) for n, a in graph.items())
+    groups = [(k, nodes) for k, nodes in groups.items() if len(nodes) > 1]
+    return move_to_subgraphs(groups, graph)
+
+
 
 
 #####################
@@ -252,6 +282,7 @@ def _match(LHS, candidates, ctxt):
         except UnificationError:
             pass
 
+
 def search(pattern, graph):
     proposals = [{}]
     for (LHS, candidates) in plan_query(pattern, graph):
@@ -259,16 +290,15 @@ def search(pattern, graph):
     return list(proposals)
 
 
+class uid():
+    pass
+
+
 def apply_rule(graph, rule):
     LHS, RHS = rule
     matches = search(LHS, graph)
     # remove matched nodes except for inputs
-    remove = {n for match in matches for k, n in match.items() if k in LHS}
-    # generate names for nodes to be added to the graph
-    all_nodes = external_inputs(graph).union(graph.keys())
-    IDs = filter(lambda key: key not in all_nodes, count(1))
-    add = [reify(reindex(RHS, dict(zip((k for k in RHS.keys() 
-                if not isinstance(k, var)), IDs))), match)
-                    for match in matches]
-    return union({k: v for k, v in graph.items() if k not in remove}, *add)
+    matched = {n for match in matches for k, n in match.items() if k in LHS}
+    productions = [reify(RHS, union({k: uid() for k in RHS.keys()}, match)) for match in matches]
+    return reindex(union({k: v for k, v in graph.items() if k not in matched}, *productions))
 
