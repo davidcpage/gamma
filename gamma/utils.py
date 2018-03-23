@@ -55,9 +55,14 @@ def parent(path):
 def draw(graph, legend=True, scale=1, **kwargs):
     height = max(depths(graph).values())
     size = max(len(graph)/height, (height-0.3))*scale/1.5
+    
+    def sanitise(key):  #graphviz doesn't like nodes named 'graph'
+        key = str(key)
+        if split(key)[1] in {'graph', 'subgraph', 'digraph'}:
+            key += ' '
+        return key
 
-    sanitise = lambda k: '_graph_' if k == 'graph' else str(k) #pydot doesn't like nodes named 'graph'
-    nodes = [(sanitise(k), str(attr['label']),
+    nodes = [(sanitise(k), sanitise(attr['label']),
               {'tooltip': '%s %s %.1000r' % (str(k), attr['type'], attr['params']),
                'fillcolor': COLORS[attr['type']],
                }) for k, attr in graph.items()]
