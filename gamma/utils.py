@@ -52,7 +52,7 @@ def parent(path):
     return split(path)[0]
 
 
-def draw(graph, legend=True, scale=1, **kwargs):
+def draw(graph, legend=True, scale=1, encoding=None, **kwargs):
     height = max(depths(graph).values())
     size = max(len(graph)/height, (height-0.3))*scale/1.5
     
@@ -68,14 +68,14 @@ def draw(graph, legend=True, scale=1, **kwargs):
                }) for k, attr in graph.items()]
     edges = ((sanitise(src), sanitise(k), {}) for k, n in graph.items()
              for src in input_nodes(n))
-    g = draw_pydot(nodes, edges, size=size, **kwargs)
+    g = draw_pydot(nodes, edges, size=size, encoding=encoding, **kwargs)
     if legend:
         types = {a['type'] for a in graph.values()}
         display(HTML(ColorMap.html({t: COLORS[t] for t in types})))
     display(SVG(g))
 
 
-def draw_pydot(nodes, edges, direction='LR', **kwargs):
+def draw_pydot(nodes, edges, direction='LR', encoding=None, **kwargs):
     def make_subgraph(path, parent_graph):
         subgraph = pydot.Cluster(
            path, label=split(path)[1], style='rounded, filled', fillcolor='#77777744')
@@ -94,7 +94,7 @@ def draw_pydot(nodes, edges, direction='LR', **kwargs):
     for src, dst, attr in edges:
         g.add_edge(pydot.Edge(src, dst, **attr))
 
-    return g.create(format='svg')
+    return g.create(format='svg', encoding=encoding)
 
 
 
