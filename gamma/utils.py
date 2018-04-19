@@ -3,9 +3,11 @@ from IPython.display import display, SVG, HTML
 from gamma.core import FuncCache, input_nodes, depths
 import os
 from urllib.request import urlretrieve
+import hashlib
 import tarfile
 import zipfile
 from tqdm import tqdm
+
 
 ################
 # plotting
@@ -52,11 +54,14 @@ def parent(path):
     return split(path)[0]
 
 
+
+
+
 def draw(graph, legend=True, scale=1, **kwargs):
     height = max(depths(graph).values())
     size = max(len(graph)/height, (height-0.3))*scale/1.5
-    
-    def sanitise(key):  #graphviz doesn't like nodes named 'graph'
+
+    def sanitise(key):#graphviz doesn't like nodes named 'graph'
         key = str(key)
         if split(key)[1] in {'graph', 'subgraph', 'digraph'}:
             key += ' '
@@ -98,13 +103,14 @@ def draw_pydot(nodes, edges, direction='LR', **kwargs):
 
 
 
-def get_file(fname, origin, cache_dir='~/.gamma'):
+def get_file(origin, fname=None, cache_dir='~/.gamma'):
+    fname = fname or hashlib.sha1(origin.encode('utf-8')).hexdigest()
     fpath = os.path.join(os.path.expanduser(cache_dir), fname)
     basedir = os.path.dirname(fpath)
     if not os.path.exists(basedir):
         os.makedirs(basedir)
     sfx = ''
-    for suffix in ('.tar.gz','.tar.bz', 'tar'):
+    for suffix in ('.tar.gz', '.tgz', '.tar.bz', 'tar'):
         if origin.endswith(suffix) and not fpath.endswith(suffix):
             sfx = suffix
     if not os.path.exists(fpath+sfx):
@@ -117,9 +123,9 @@ def get_file(fname, origin, cache_dir='~/.gamma'):
     if not os.path.exists(fpath):
         if tarfile.is_tarfile(fpath+sfx):
             with tarfile.open(fpath+sfx) as archive:
-                archive.extractall(basedir)
+                archive.extractall(fpath)
         elif zipfile.is_zipfile(fpath+sfx):
             with zipfile.ZipFile(fpath+sfx) as archive:
-                archive.extractall(basedir)
+                archive.extractall(fpath)
     return fpath
 

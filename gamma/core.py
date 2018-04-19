@@ -231,13 +231,15 @@ def make_subgraph(nodes, label, input_names=None):
 
 
 def move_to_subgraphs(groups, graph):
-    groups = [(group_name, uid(), {n: graph[n] for n in nodes}) for group_name, nodes in groups]
+    nodes = external_inputs(graph).union(graph)
+    group_ids = filter(lambda n: n not in nodes, ('g_%g' % i for i in count(1)))
+    groups = [(group_name, next(group_ids), {n: graph[n] for n in nodes}) for group_name, nodes in groups]
     subgraphs = {id_: make_subgraph(nodes, group_name) for group_name, id_, nodes in groups}
     remove = {n for _, _, nodes in groups for n in nodes.keys()}
     g = union({n: a for n, a in graph.items() if n not in remove}, subgraphs)
     inputs = {n for a in g.values() for n in input_nodes(a)}
     ports = {n: make_node_attr('Port', {'node': n}, a['label'], [id_]) for group_name, id_, nodes in groups for n, a in nodes.items() if n in inputs}  
-    return reindex(union(g, ports))
+    return union(g, ports)
 
 
 def collapse(graph, levels=2):
