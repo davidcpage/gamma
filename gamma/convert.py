@@ -3,7 +3,7 @@ import numpy as np
 from google.protobuf.json_format import ParseDict, MessageToDict
 import onnx
 from onnx import numpy_helper
-from .core import reindex, make_node_attr
+from .core import reindex, make_node_attr, path_iter
 from .protobuf import unwrap
 
 def make_tensor_value_info(name, elem_type, *args, **kwargs):
@@ -38,14 +38,16 @@ def from_tflow(graph_def):
                          [i.split('^', 1)[-1].split(':', 1)[0] for i in n.get('input', [])])
              for n in unwrap(graph_def.node)}   
     return reindex(graph)
-   
+
+def _to_string(label):
+    return '/'.join(path_iter(label))
 
 def to_tflow(graph):
     import tensorflow as tf
-    name_lookup = lambda n: graph[n][0]['label'] if n in graph else str(n)
+    name_lookup = lambda n: _to_string(graph[n]['label']) if n in graph else str(n)
     wrap = lambda arg: ({'tensor': MessageToDict(tf.make_tensor_proto(arg))} 
              if isinstance(arg, np.ndarray) else arg)
-    nodes = [{'name': attr['label'], 'op': attr['type'],
+    nodes = [{'name': _to_string(attr['label']), 'op': attr['type'],
               'attr': {k: wrap(v) for (k, v) in attr['params'].items()},
               'input': [name_lookup(i) for i in attr['inputs']]}
              for name, attr in graph.items()]

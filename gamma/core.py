@@ -18,7 +18,7 @@ class var(object):
     
     def __iter__(self):  
         #various parts of the code expect node['inputs'] to be an iterable.. not sure this is a good idea.
-        return iter(())
+        yield ()
 
     def __str__(self):
         return "_" + str(self.token)
@@ -241,14 +241,18 @@ def move_to_subgraphs(groups, graph):
     ports = {n: make_node_attr('Port', {'node': n}, a['label'], [id_]) for group_name, id_, nodes in groups for n, a in nodes.items() if n in inputs}  
     return union(g, ports)
 
+def path_iter(label):
+    #eg list(path_iter(('a/b', ('c', 'd/e'), 'f'))) == ['a', 'b', 'c', 'd', 'e', 'f']
+    if isinstance(label, (list, tuple)):
+        for l in label:
+            yield from path_iter(l)
+    else:
+        yield from str(label).split('/')   
 
 def collapse(graph, levels=2):
-    prefix = lambda label: '/'.join(label.split('/', levels)[:levels])
-    groups = gather((prefix(a['label']), n) for n, a in graph.items())
+    groups = gather((tuple(path_iter(a['label']))[:levels], n) for n, a in graph.items())
     groups = [(k, nodes) for k, nodes in groups.items() if len(nodes) > 1]
     return move_to_subgraphs(groups, graph)
-
-
 
 
 #####################

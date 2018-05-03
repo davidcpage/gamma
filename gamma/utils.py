@@ -1,6 +1,6 @@
 import pydot
 from IPython.display import display, SVG, HTML
-from gamma.core import FuncCache, input_nodes, depths
+from gamma.core import FuncCache, input_nodes, depths, path_iter
 import os
 from urllib.request import urlretrieve
 import hashlib
@@ -44,34 +44,21 @@ class ColorMap(dict):
 
 COLORS = ColorMap()
 
-
-def split(path):
-    i = path.rfind('/')
-    return path[:max(i, 0)], path[i+1:]
-
-
 def parent(path):
-    return split(path)[0]
+    return path[:-1]
 
-
-
-
+def stub(path):
+    return path[-1]
+ 
 
 def draw(graph, legend=True, scale=1, **kwargs):
     height = max(depths(graph).values())
     size = max(len(graph)/height, (height-0.3))*scale/1.5
-
-    def sanitise(key):#graphviz doesn't like nodes named 'graph'
-        key = str(key)
-        if split(key)[1] in {'graph', 'subgraph', 'digraph'}:
-            key += ' '
-        return key
-
-    nodes = [(sanitise(k), sanitise(attr['label']),
+    nodes = [(k, tuple(path_iter(attr['label'])),
               {'tooltip': '%s %s %.1000r' % (str(k), attr['type'], attr['params']),
                'fillcolor': COLORS[attr['type']],
                }) for k, attr in graph.items()]
-    edges = ((sanitise(src), sanitise(k), {}) for k, n in graph.items()
+    edges = ((src, k, {}) for k, n in graph.items()
              for src in input_nodes(n))
     g = draw_pydot(nodes, edges, size=size, **kwargs)
     if legend:
@@ -83,21 +70,25 @@ def draw(graph, legend=True, scale=1, **kwargs):
 def draw_pydot(nodes, edges, direction='LR', **kwargs):
     def make_subgraph(path, parent_graph):
         subgraph = pydot.Cluster(
-           path, label=split(path)[1], style='rounded, filled', fillcolor='#77777744')
+           sanitise('/'.join(path)), label=sanitise(stub(path)), 
+           style='rounded, filled', fillcolor='#77777744')
         parent_graph.add_subgraph(subgraph)
         return subgraph
-
+    
+    #graphviz doesn't like nodes named 'graph'
+    sanitise = lambda k: k + ' ' if k in {'graph', 'subgraph', 'digraph'} else str(k)
+     
     subgraphs = FuncCache(lambda path: make_subgraph(
         path, subgraphs[parent(path)]))
-    subgraphs[''] = g = pydot.Dot(rankdir=direction, directed=True, **kwargs)
+    subgraphs[()] = g = pydot.Dot(rankdir=direction, directed=True, **kwargs)
     g.set_node_defaults(
         shape='box', style='rounded, filled', fillcolor='#ffffff')
 
     for node, path, attr in nodes:
-        p, stub = split(path)
-        subgraphs[p].add_node(pydot.Node(name=node, label=stub, **attr))
+        subgraphs[parent(path)].add_node(
+            pydot.Node(name=sanitise(node), label=sanitise(stub(path)), **attr))
     for src, dst, attr in edges:
-        g.add_edge(pydot.Edge(src, dst, **attr))
+        g.add_edge(pydot.Edge(sanitise(src), sanitise(dst), **attr))
 
     return g.create(format='svg')
 
