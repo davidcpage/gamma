@@ -52,6 +52,8 @@ def stub(path):
  
 
 def draw(graph, legend=True, scale=1, **kwargs):
+    type_name = lambda t: getattr(t, '__name__', t) 
+    graph = {n: dict(a, type=type_name(a['type'])) for (n, a) in graph.items()}
     height = max(depths(graph).values())
     size = max(len(graph)/height, (height-0.3))*scale/1.5
     nodes = [(k, tuple(path_iter(attr['label'])),
