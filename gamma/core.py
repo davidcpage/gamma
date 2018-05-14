@@ -18,7 +18,7 @@ class var(object):
     
     def __iter__(self):  
         #various parts of the code expect node['inputs'] to be an iterable.. not sure this is a good idea.
-        yield ()
+        return iter(())
 
     def __str__(self):
         return "_" + str(self.token)
@@ -223,23 +223,30 @@ def make_pattern(graph):
       for n, a in graph.items()}
 
 
-def make_subgraph(nodes, label, input_names=None):
-    inputs = list(external_inputs(nodes))
-    input_names = input_names or [f'in{i}' for i in range(len(inputs))]
-    nodes = reindex(nodes, dict(zip(inputs, input_names)))
-    return make_node_attr('Graph', {'nodes': nodes, 'input_names': input_names}, label, inputs)
+def make_subgraph_node(subgraph, label, input_names=None):
+    #we need to collect the set of all external_inputs of the subgraph
+    #and make these inputs to the node. we rename inputs for internal use
+    #in params['nodes] so that if reindex is called on the outer graph there 
+    #is no need to rename things inside subgraph params['nodes']
+    inputs = list(external_inputs(subgraph))
+    input_names = input_names or (f'in{i}' for i in range(len(inputs)))
+    return make_node_attr('Graph', {'nodes': reindex(subgraph, dict(zip(inputs, input_names))), 
+                                        'input_names': input_names}, label, inputs)
 
 
 def move_to_subgraphs(groups, graph):
-    nodes = external_inputs(graph).union(graph)
-    group_ids = filter(lambda n: n not in nodes, ('g_%g' % i for i in count(1)))
-    groups = [(group_name, next(group_ids), {n: graph[n] for n in nodes}) for group_name, nodes in groups]
-    subgraphs = {id_: make_subgraph(nodes, group_name) for group_name, id_, nodes in groups}
-    remove = {n for _, _, nodes in groups for n in nodes.keys()}
-    g = union({n: a for n, a in graph.items() if n not in remove}, subgraphs)
+    all_nodes = external_inputs(graph).union(graph)
+    clashes = [group_name for group_name, _ in groups if group_name in all_nodes]
+    if len(clashes):
+        raise Exception(f'Name clash between groups {clashes} and nodes in the graph')
+    subgraph_nodes = {group_name: make_subgraph_node({n: graph[n] for n in nodes}, group_name) 
+                        for group_name, nodes in groups}
+    remove = {n for _, nodes in groups for n in nodes}
+    g = union({n: a for n, a in graph.items() if n not in remove}, subgraph_nodes)
     inputs = {n for a in g.values() for n in input_nodes(a)}
-    ports = {n: make_node_attr('Port', {'node': n}, a['label'], [id_]) for group_name, id_, nodes in groups for n, a in nodes.items() if n in inputs}  
+    ports = {n: make_node_attr('Port', {'node': n}, graph[n]['label'], [group_name]) for group_name, nodes in groups for n in nodes if n in inputs}  
     return union(g, ports)
+
 
 def path_iter(label):
     #eg list(path_iter(('a/b', ('c', 'd/e'), 'f'))) == ['a', 'b', 'c', 'd', 'e', 'f']
@@ -248,6 +255,11 @@ def path_iter(label):
             yield from path_iter(l)
     else:
         yield from str(label).split('/')   
+
+
+def path_str(label, sep='/'):
+    return sep.join(path_iter(label))
+
 
 def collapse(graph, levels=2):
     groups = gather((tuple(path_iter(a['label']))[:levels], n) for n, a in graph.items())
