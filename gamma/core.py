@@ -159,7 +159,8 @@ def restrict(graph, inputs, outputs):
 
 
 def input_nodes(node_attr):
-    return node_attr['inputs']
+    res = node_attr['inputs']
+    return () if res is Wildcard else res
  
 
 def edges(graph):
@@ -280,7 +281,7 @@ def plan_query(pattern, graph):
     p_nbrs = lambda node: (n for nbrs in nbhds['pattern'].get(node, {}).values() 
                                   for (n, port) in nbrs)
     for node in walk_nodes(p_nbrs, {starting_node}):
-        if node in pattern: 
+        if node in pattern:
             #match node_attr
             query.append((pattern[node], lambda ctxt, node=node: [graph[ctxt[node]]]))
         #match neighbouring nodes
