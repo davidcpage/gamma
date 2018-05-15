@@ -20,15 +20,23 @@ class var(object):
         #various parts of the code expect node['inputs'] to be an iterable.. not sure this is a good idea.
         return iter(())
 
-    def __str__(self):
-        return "_" + str(self.token)
+    def __str__(self): return f'_{self.token}'
     __repr__ = __str__
+
+    @classmethod
+    def all(cls):
+        return dict(enumerate(cls._cache))
 
 
 def walk(key, d):
     while isinstance(key, var) and key in d:
         key = d[key]
     return key
+
+
+class Wildcard():
+    def __str__(self): return f'Wildcard_{id(self)}'
+    __repr__ = __str__
 
 
 def reify(x, s):
@@ -38,13 +46,12 @@ def reify(x, s):
         return type(x)(reify(xx, s) for xx in x)
     elif isinstance(x, dict):
         return {reify(k, s): reify(v, s) for k, v in x.items()}
+    elif x is Wildcard:
+        return var(x())
     return x
 
 
 class UnificationError(Exception):
-    pass
-
-class Wildcard():
     pass
 
 
@@ -52,7 +59,6 @@ def _unify_inplace(u, v, s): #i.e. the bindings dict `s` gets updated in place
     u = walk(u, s)
     v = walk(v, s)
     #u and v could be vars, consts or (nested) datastructures of vars and consts
-    if (u is Wildcard or v is Wildcard): return #use type Wildcard as a wildcard. is this a good idea?
     if (u is v): return
     #numpy `==` is broken and breaks `== `for nested structure containing numpy arrays
     #so we have to test `==` in a try block...
@@ -191,13 +197,13 @@ def truncate(graph, k):
     return dict(islice(topological_sort(graph), k))
 
 
-def new_node_ids(graph):
-    inputs = external_inputs(graph)
-    ids = filter(lambda key: key not in inputs, count(1))
-    return dict(zip((n for n, _ in topological_sort(graph)), ids))
-
+def gen_ids(reserved):
+    return filter(lambda key: key not in reserved, count(1))
+    
 
 def reindex(graph, node_map=None):
+    if node_map is None:
+        node_map =  dict(zip((n for n, _ in topological_sort(graph)), gen_ids(reserved=external_inputs(graph))))
     node_map = new_node_ids(graph) if node_map is None else node_map
     f = lambda x: node_map.get(x, x)
     map_inputs = lambda inputs: (inputs if isinstance(inputs, var) else [f(i) for i in inputs])
@@ -283,7 +289,7 @@ def plan_query(pattern, graph):
     for node in walk_nodes(p_nbrs, {starting_node}):
         if node in pattern:
             #match node_attr
-            query.append((pattern[node], lambda ctxt, node=node: [graph[ctxt[node]]]))
+            query.append((pattern[node], lambda ctxt, node=node: [graph.get(ctxt[node], None)]))
         #match neighbouring nodes
         query.extend(
             (nbr, lambda ctxt, node=node, port=port: nbhds['graph'][ctxt[node]].get(port, ())) 
@@ -301,23 +307,24 @@ def _match(LHS, candidates, ctxt):
         except UnificationError:
             pass
 
-
-def search(pattern, graph):
+def _search(pattern, graph):
     proposals = [{}]
     for (LHS, candidates) in plan_query(pattern, graph):
         proposals = chain(*(_match(LHS, candidates(ctxt), ctxt) for ctxt in proposals))
     return list(proposals)
 
-
-class uid():
-    pass
-
+def search(pattern, graph):
+    pattern = reify(pattern, {}) #replace Wildcards with var(Wildcard())
+    proposals = _search(pattern, graph)
+    return [{k:v for (k, v) in proposal.items() if not isinstance(k.token, Wildcard)} for proposal in proposals]
 
 def apply_rule(graph, rule):
     LHS, RHS = rule
-    matches = search(LHS, graph)
+    LHS = reify(LHS, {}) #replace Wildcards with var(Wildcard()); do it here so that we know which keys to remove below
+    matches = _search(LHS, graph)
     # remove matched nodes except for inputs
-    matched = {n for match in matches for k, n in match.items() if k in LHS}
-    productions = [reify(RHS, union({k: uid() for k in RHS.keys()}, match)) for match in matches]
-    return reindex(union({k: v for k, v in graph.items() if k not in matched}, *productions))
+    matched_nodes = {n for match in matches for n in reify(list(LHS.keys()), match)}
+    ids = gen_ids(reserved=external_inputs(graph).union(graph))
+    productions = [reify(RHS, union({k: next(ids) for k in RHS.keys()}, match)) for match in matches]
+    return union({k: v for k, v in graph.items() if k not in matched_nodes}, *productions)
 
