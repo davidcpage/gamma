@@ -149,9 +149,17 @@ def walk_nodes(neighbours, starting_nodes):
 def depths(graph):
     self = FuncCache()
     def depth(node):
-        self[node] = 0 #avoid infinite recursion if graph contains cycles
-        return 1 + max((self[n] for n in (input_nodes(graph[node]) if node in graph else ())), default=0)
+        try:
+            self[node] = 0 #avoid infinite recursion if graph contains cycles
+            return 1 + max((self[n] for n in (input_nodes(graph[node]) if node in graph else ())), default=0)
+        except RecursionError:
+            del self[node]
+            raise RecursionError
     self.func = depth
+    while len(self) < len(graph):
+        for n in graph:
+            try: self[n]
+            except RecursionError: pass      
     return {n: self[n] for n in graph}
 
 
