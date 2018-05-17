@@ -1,5 +1,7 @@
 from collections import defaultdict
 from itertools import count, chain, islice
+from functools import wraps
+from inspect import signature
 
 ################
 # logic
@@ -217,6 +219,9 @@ def relabel(graph, label_func):
     return {node: dict(attr, label=label_func(attr['label']))
             for node, attr in graph.items()}
 
+def add_prefix(prefix, graph):
+    return relabel(graph, lambda label: (prefix, label))
+
 
 def make_node_attr(type, params=None, label=None, inputs=None):
     params = {} if params is None else params
@@ -224,10 +229,22 @@ def make_node_attr(type, params=None, label=None, inputs=None):
     return {'type': type, 'params': params, 'label': label, 'inputs': inputs}
 
 
+def pipeline(nodes, input='input'):
+    return {n['label']: dict(n, inputs=[i]) for (n, i) in zip(nodes, [input]+[node['label'] for node in nodes])}
+
+
 def make_pattern(graph):
     return {var(n): make_node_attr(a['type'], var(f'{n}_params'), var(a['label']), 
              [var(x) for x in a['inputs']]) 
       for n, a in graph.items()}
+
+
+def bind_vars(func):
+    defaults = {k: var(k) for k in signature(func).parameters}
+    @wraps(func)
+    def func_wrapper(**kwargs):
+        return func(**union(defaults, kwargs))
+    return func_wrapper
 
 
 def make_subgraph_node(subgraph, label, input_names=None):
@@ -255,13 +272,13 @@ def move_to_subgraphs(groups, graph):
     return union(g, ports)
 
 
-def path_iter(label):
+def path_iter(label, sep='/'):
     #eg list(path_iter(('a/b', ('c', 'd/e'), 'f'))) == ['a', 'b', 'c', 'd', 'e', 'f']
     if isinstance(label, (list, tuple)):
         for l in label:
             yield from path_iter(l)
     else:
-        yield from str(label).split('/')   
+        yield from str(label).split(sep)   
 
 
 def path_str(label, sep='/'):

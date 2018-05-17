@@ -7,6 +7,7 @@ import hashlib
 import tarfile
 import zipfile
 from tqdm import tqdm
+import re
 
 
 ################
@@ -51,22 +52,30 @@ def stub(path):
     return path[-1]
  
 
-def draw(graph, legend=True, scale=1, **kwargs):
-    type_name = lambda t: getattr(t, '__name__', t) 
-    graph = {n: dict(a, type=type_name(a['type'])) for (n, a) in graph.items()}
-    height = max(depths(graph).values())
-    size = max(len(graph)/height, (height-0.3))*scale/1.5
-    nodes = [(k, tuple(path_iter(attr['label'])),
-              {'tooltip': '%s %s %.1000r' % (str(k), attr['type'], attr['params']),
-               'fillcolor': COLORS[attr['type']],
-               }) for k, attr in graph.items()]
-    edges = ((src, k, {}) for k, n in graph.items()
-             for src in input_nodes(n))
-    g = draw_pydot(nodes, edges, size=size, **kwargs)
+def draw(graphs, legend=True, scale=1, sep='/', **kwargs):
+    if isinstance(graphs, dict): #single graph
+        graphs = [graphs]
+    html, types, = '', []
+    for graph in graphs:
+        type_name = lambda t: getattr(t, '__name__', t) 
+        graph = {n: dict(a, type=type_name(a['type'])) for (n, a) in graph.items()}
+        height = max(depths(graph).values())
+        size = max(len(graph)/height, (height-0.3))*scale/1.5
+        nodes = [(k, tuple(path_iter(attr['label'], sep)),
+                {'tooltip': '%s %s %.1000r' % (str(k), attr['type'], attr['params']),
+                'fillcolor': COLORS[attr['type']],
+                }) for k, attr in graph.items()]
+        edges = ((src, k, {}) for k, n in graph.items()
+                for src in input_nodes(n))
+        #html += f'<div>{s}</div>'
+        svg = draw_pydot(nodes, edges, size=size, **kwargs)
+        width = int(re.search('width="([0-9]*)pt"',svg)[1])
+        html += f'<div style="min-width: {width}pt">{svg}</div>'
+        types += [a['type'] for a in graph.values()]
     if legend:
-        types = {a['type'] for a in graph.values()}
-        display(HTML(ColorMap.html({t: COLORS[t] for t in types})))
-    display(SVG(g))
+        html = ColorMap.html({t: COLORS[t] for t in types}) + html
+       # html = f'<div style="width: auto">{html}</div>'
+    display(HTML(html))
 
 
 def draw_pydot(nodes, edges, direction='LR', **kwargs):
@@ -92,7 +101,7 @@ def draw_pydot(nodes, edges, direction='LR', **kwargs):
     for src, dst, attr in edges:
         g.add_edge(pydot.Edge(sanitise(src), sanitise(dst), **attr))
 
-    return g.create(format='svg')
+    return g.create(format='svg').decode('utf-8')
 
 
 
