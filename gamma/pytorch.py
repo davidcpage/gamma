@@ -20,7 +20,11 @@ class TorchGraph(nn.Module):
 def load_state(net, state_dict):
     for key, val in state_dict.items():
         *head, tail = key.split('.')
-        setattr(getattr(net, '.'.join(head)), tail, val)    
+        mod = getattr(net, '.'.join(head))
+        #'https://download.pytorch.org/models/resnet152-b121ed2d.pth' stores parameters as tensors...
+        if isinstance(getattr(mod, tail), nn.Parameter) and not isinstance(val, nn.Parameter):
+            val = nn.Parameter(val) 
+        setattr(mod, tail, val)    
 
 def to_numpy(x): return x.detach().cpu().numpy()    
 
