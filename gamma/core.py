@@ -220,6 +220,24 @@ def reindex(graph, node_map=None):
     return {f(node): dict(attr, inputs=map_inputs(input_nodes(attr))) for node, attr in graph.items()}
 
 
+def make_label_func(label_rules):
+    """
+    Resulting label_func is to be used in relabel(graph, label_func), e.g.
+        label_func = make_label_func([
+            ('MobilenetV2/{}', '{}'),
+            ('{layer}/expand/{}',    '{layer}/conv1/{}'),
+        ])
+        graph = relabel(graph, label_func)
+    """
+    import parse #https://pypi.org/project/parse/#description
+    label_rules = [(parse.compile(LHS), RHS) for (LHS, RHS) in label_rules]
+    def label_func(label):
+        for LHS, RHS in label_rules:
+            parsed = LHS.parse(label)
+            if parsed: label = RHS.format(*parsed.fixed, **parsed.named)
+        return label
+    return label_func
+
 def relabel(graph, label_func):
     if isinstance(label_func, dict):
         d = label_func
