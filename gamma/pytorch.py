@@ -32,8 +32,13 @@ class Identity(nn.Module):
     def forward(self, x): return x
     
 class Add(nn.Module):
-    def forward(self, x, y): return x + y
-    
+    def __init__(self,  inplace):
+        super().__init__()
+        self.inplace = inplace
+    def forward(self, x, y): 
+        if self.inplace: return x.add_(y)
+        else: return x + y
+       
 class GlobalAvgPool2d(nn.Module):
     def forward(self, x): return F.adaptive_avg_pool2d(x, (1,1)).view(x.size(0), x.size(1))
     
@@ -77,7 +82,7 @@ identity  = node(Identity, [])
 pool      = node(ConcatPool2d, [])
 linear    = node(nn.Linear, ['in_features', 'out_features'])
 bn        = node(nn.BatchNorm2d, ['num_features'])
-conv      = node(nn.Conv2d, ['in_channels', 'out_channels', 'kernel_size', 'stride', 'padding', 'bias'])
+conv      = node(nn.Conv2d, ['in_channels', 'out_channels', 'kernel_size', 'stride', 'padding', 'bias', 'groups'])
 conv_op   = node(ConvOp, ['stride', 'padding'])
 bn_op     = node(BatchNormOp, ['training'])
 linear_op = node(LinearOp, [])
@@ -85,9 +90,9 @@ max_pool   = node(nn.MaxPool2d, ['kernel_size', 'stride', 'padding'])
 
 global_avg_pool   = node(GlobalAvgPool2d, [])
 
-relu      = node(nn.ReLU, [])
+relu      = node(nn.ReLU, ['inplace'])
 x_entropy = node(nn.CrossEntropyLoss, [])
-add       = node(Add, [])
+add       = node(Add, ['inplace'])
 constant = node(Constant, ['value', 'size'])
 
 ##############
