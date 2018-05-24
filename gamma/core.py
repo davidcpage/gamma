@@ -1,6 +1,6 @@
 from collections import defaultdict
 from itertools import count, chain, islice
-from functools import wraps
+from functools import wraps, reduce
 from inspect import signature
 
 ################
@@ -219,8 +219,12 @@ def reindex(graph, node_map=None):
     map_inputs = lambda inputs: (inputs if isinstance(inputs, var) else [f(i) for i in inputs])
     return {f(node): dict(attr, inputs=map_inputs(input_nodes(attr))) for node, attr in graph.items()}
 
+def index_by_labels(graph, sep='/'):
+    groups = gather(((path_str(a['label'], sep), n) for n, a in graph.items()), list)
+    node_map={n: (f'{k}_{j}' if j else f'{k}') for (k, group) in groups.items()  for (j, n) in enumerate(group)}
+    return reindex(graph, node_map)
 
-def make_label_func(label_rules):
+def make_label_func(label_rules, match_prefix=False):
     """
     Resulting label_func is to be used in relabel(graph, label_func), e.g.
         label_func = make_label_func([
@@ -229,7 +233,9 @@ def make_label_func(label_rules):
         ])
         graph = relabel(graph, label_func)
     """
-    import parse #https://pypi.org/project/parse/#description
+    import parse #https://pypi.org/project/parse
+    if match_prefix: 
+        label_rules = [(LHS+sfx, RHS+sfx) for (LHS,RHS) in label_rules for sfx in ['', '/{}']]
     label_rules = [(parse.compile(LHS), RHS) for (LHS, RHS) in label_rules]
     def label_func(label):
         for LHS, RHS in label_rules:
@@ -255,7 +261,8 @@ def make_node_attr(type, params=None, label=None, inputs=None):
     return {'type': type, 'params': params, 'label': label, 'inputs': inputs}
 
 
-def pipeline(nodes, input='input'):
+def pipeline(nodes, input=None):
+    if input is None: input = nodes[0]['inputs'][0]
     return {n['label']: dict(n, inputs=[i]) for (n, i) in zip(nodes, [input]+[node['label'] for node in nodes])}
 
 
@@ -371,3 +378,4 @@ def apply_rule(graph, rule):
     productions = [reify(RHS, union({k: next(ids) for k in RHS.keys()}, match)) for match in matches]
     return union({k: v for k, v in graph.items() if k not in matched_nodes}, *productions)
 
+def apply_rules(graph, rules): return reduce(apply_rule, rules, graph)
