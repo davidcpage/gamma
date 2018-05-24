@@ -7,7 +7,7 @@ setup(
     url='https://github.com/davidcpage/gamma',
     author='David Page',
     packages=['gamma'],
-    install_requires=['pydot'],
+    install_requires=['pydot', 'parse', 'tqdm'],
     python_requires='>=3',
     )
 
