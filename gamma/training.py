@@ -1,8 +1,8 @@
 import functools
 import time
+from collections import namedtuple
 import torch
 import numpy as np
-import matplotlib.pyplot as plt
 from .pytorch import to_numpy
 
 
@@ -95,6 +95,20 @@ class LogStats(Transducer):
         })
         return self.reducer.finalize(state)
 
+class Memo(Transducer):
+  def __init__(self, paths):
+    self.paths = paths
+    
+  def initialize(self, state):
+    if 'memo' not in state: state['memo'] = {path: [] for path in self.paths}
+    return self.reducer.initialize(state)
+  
+  def step(self, state, inputs):
+    state, reduced = self.reducer.step(state, inputs)
+    for (k1, k2) in self.paths:
+      state['memo'][(k1, k2)].append(to_numpy(getattr(getattr(state['model'], k1), k2)))
+    return state, reduced
+  
 
 class Backward(Transducer):
     def initialize(self, state):
@@ -135,10 +149,11 @@ class Nesterov(Transducer):
             param.data.add_(-lr, g)
         return state, reduced
 
+class piecewise_linear(namedtuple('piecewise_linear', ('knots', 'vals'))):
+    def __call__(self, x): return np.interp([x], self.knots, self.vals)[0]
 
-def piecewise_linear(knots, vals): return lambda x: np.interp([x], knots, vals)[0]
 
-def plot_lr_schedule(lr_schedule, epochs, ax=plt):
+def plot_lr_schedule(lr_schedule, epochs, ax):
     return ax.plot(*zip(*[(x, lr_schedule(x)) for x in np.arange(0, epochs, 0.1)]))
 
 class LRScheduler(Transducer):
