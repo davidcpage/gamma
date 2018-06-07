@@ -57,8 +57,14 @@ class Reducer:
 # Training
 ##################
 
-
 class Forward(Reducer):
+    def __init__(self, training):
+        self.training = training
+    
+    def initialize(self, state):
+        state['model'].train(self.training)
+        return state
+    
     @staticmethod
     def step(state, inputs):
         output = state['model']({'input': inputs[0].half().cuda(), 'target': inputs[1].cuda()})
