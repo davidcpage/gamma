@@ -55,7 +55,7 @@ class Reducer:
 
 ##################
 # Training
-##################
+##################   
 
 class Forward(Reducer):
     def __init__(self, training):
@@ -74,11 +74,15 @@ class Forward(Reducer):
 def is_correct(outputs): return to_numpy(outputs['classifier']).argmax(
     axis=1) == to_numpy(outputs['target'])
 
-
 class LogStats(Transducer):
+    def __init__(self, examples_per_epoch):
+        self.examples_per_epoch = examples_per_epoch
+
     def initialize(self, state):
         if 'stats' not in state: state['stats'] = []
-        state['stats'].append({'total': 0, 'correct': 0, 'total_loss': 0, 'start_time': time.time()})
+        state['stats'].append(
+            {'progress': 0, 'total': 0, 'correct': 0, 'total_loss': 0, 'start_time': time.time()}
+        )
         return self.reducer.initialize(state)
 
     def step(self, state, inputs):
@@ -89,6 +93,7 @@ class LogStats(Transducer):
         stats['total_loss'] += to_numpy(outputs['loss'])*n
         stats['total'] += n
         stats['correct'] += is_correct(outputs).sum()
+        stats['progress'] = stats['total']/self.examples_per_epoch
         return state, reduced
 
     def finalize(self, state):
@@ -100,6 +105,7 @@ class LogStats(Transducer):
             'loss': stats['total_loss']/stats['total']
         })
         return self.reducer.finalize(state)
+
 
 class Memo(Transducer):
   def __init__(self, paths):
@@ -165,9 +171,9 @@ def plot_lr_schedule(lr_schedule, epochs, ax):
 class LRScheduler(Transducer):
     def __init__(self, lr_schedule):
         self.lr_schedule = lr_schedule
-
-    def step(self, state, item):
-        progress, inputs = item
+                               
+    def step(self, state, inputs):
+        progress = state['epoch'] + state['stats'][-1]['progress']
         state['optimizer']['lr'] = self.lr_schedule(progress)
         return self.reducer.step(state, inputs)
 
@@ -185,7 +191,6 @@ class EarlyStop(Transducer):
         self.counter += 1
         reduced = reduced or (self.counter == self.num_batches)
         return state, reduced
-
 
 class EpochRunner(Reducer):
     @staticmethod
@@ -208,9 +213,6 @@ class EpochRunner(Reducer):
 
     def step(self, state, item):
         train, test = item
-        n_batch = len(train)
-        train = ((i/n_batch + state['epoch'], batch)
-                 for (i, batch) in enumerate(train))
         state = reduce(self.train_step, train, state)
         state = reduce(self.test_step, test, state)
         state['epoch'] += 1
