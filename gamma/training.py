@@ -9,9 +9,14 @@ from .pytorch import to_numpy
 ################
 # Transducers
 ################
+
+class Compose(namedtuple('Compose', ('funcs'))):
+    def __call__(self, *args, **kwargs):
+        f, *fs = tuple(reversed(self.funcs))  
+        return functools.reduce(lambda acc, f: f(acc), fs, f(*args, **kwargs))
+
 def compose(*funcs):
-    f, *fs = tuple(reversed(funcs))
-    return lambda *args, **kwargs: functools.reduce(lambda acc, f: f(acc), fs, f(*args, **kwargs))
+    return Compose(funcs)
 
 
 def reduce(reducer, iterable, init=None):
