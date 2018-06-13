@@ -68,11 +68,13 @@ class Forward(Reducer):
     def initialize(self, state):
         state['model'].train(self.training)
         state['processed'] = 0
+        state['batches'] = 0
         return state
     
     @staticmethod
     def step(state, inputs):
         state['processed'] += len(inputs[0])
+        state['batches'] += 1
         device = state['device']
         output = state['model']({'input': inputs[0].to(device), 'target': inputs[1].to(device)})
         return state, False
@@ -94,9 +96,7 @@ class LogStats(Transducer):
         n = outputs['target'].shape[0]
         stats = state['stats'][-1]
         stats['total_loss'] += to_numpy(outputs['loss'])*n
-        #stats['total'] += n
         stats['correct'] += is_correct(outputs).sum()
-      #  stats['progress'] = stats['total']/self.examples_per_epoch
         return state, reduced
 
     def finalize(self, state):
@@ -182,7 +182,7 @@ class LRScheduler(Transducer):
 
     def step(self, state, inputs):
         state, reduced = self.reducer.step(state, inputs)
-        progress = state['epoch'] + state['processed'] / state['epoch_length']
+        progress = state['epoch'] + state['batches'] / state['epoch_length']
         for k, f in self.params.items():
             state['optimizer'][k] = f(progress) if callable(f) else f
         return state, reduced
