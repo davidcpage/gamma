@@ -10,14 +10,13 @@ from .pytorch import to_numpy
 # Transducers
 ################
 
-class Compose(namedtuple('Compose', ('funcs'))):
+class compose(namedtuple('compose', ('fs'))):
+    def __new__(cls, *args): 
+        return super().__new__(cls, args)
+
     def __call__(self, *args, **kwargs):
-        f, *fs = tuple(reversed(self.funcs))  
+        f, *fs = tuple(reversed(self.fs))  
         return functools.reduce(lambda acc, f: f(acc), fs, f(*args, **kwargs))
-
-def compose(*funcs):
-    return Compose(funcs)
-
 
 def reduce(reducer, iterable, init=None):
     acc = reducer.initialize(init)
@@ -29,9 +28,6 @@ def reduce(reducer, iterable, init=None):
 
 
 class Transducer:
-    def __init__(self, reducer):
-        self.reducer = reducer
-
     def initialize(self, state):
         return self.reducer.initialize(state)
 
@@ -45,6 +41,9 @@ class Transducer:
         self.reducer = reducer
         return self
 
+#    def __repr__(self):
+ #       arg_string = ', '.join(f'{name!s}={value!r}' for name, value in self.params())
+ #       return f'{type(self).__name__}({arg_string})'
 
 class Reducer:
     @staticmethod
@@ -68,25 +67,24 @@ class Forward(Reducer):
     
     def initialize(self, state):
         state['model'].train(self.training)
+        state['processed'] = 0
         return state
     
     @staticmethod
     def step(state, inputs):
-        output = state['model']({'input': inputs[0].half().cuda(), 'target': inputs[1].cuda()})
+        state['processed'] += len(inputs[0])
+        device = state['device']
+        output = state['model']({'input': inputs[0].to(device), 'target': inputs[1].to(device)})
         return state, False
-
 
 def is_correct(outputs): return to_numpy(outputs['classifier']).argmax(
     axis=1) == to_numpy(outputs['target'])
 
 class LogStats(Transducer):
-    def __init__(self, examples_per_epoch):
-        self.examples_per_epoch = examples_per_epoch
-
     def initialize(self, state):
         if 'stats' not in state: state['stats'] = []
         state['stats'].append(
-            {'progress': 0, 'total': 0, 'correct': 0, 'total_loss': 0, 'start_time': time.time()}
+            {'correct': 0, 'total_loss': 0, 'start_time': time.time()}
         )
         return self.reducer.initialize(state)
 
@@ -96,9 +94,9 @@ class LogStats(Transducer):
         n = outputs['target'].shape[0]
         stats = state['stats'][-1]
         stats['total_loss'] += to_numpy(outputs['loss'])*n
-        stats['total'] += n
+        #stats['total'] += n
         stats['correct'] += is_correct(outputs).sum()
-        stats['progress'] = stats['total']/self.examples_per_epoch
+      #  stats['progress'] = stats['total']/self.examples_per_epoch
         return state, reduced
 
     def finalize(self, state):
@@ -106,8 +104,9 @@ class LogStats(Transducer):
         stats['end_time'] = time.time()
         stats.update({
             'time': stats['end_time']-stats['start_time'],
-            'acc': stats['correct']/stats['total'],
-            'loss': stats['total_loss']/stats['total']
+            'acc': stats['correct']/state['processed'],
+            'loss': stats['total_loss']/state['processed'],
+
         })
         return self.reducer.finalize(state)
 
@@ -153,39 +152,40 @@ class Nesterov(Transducer):
 
     def step(self, state, inputs):
         state, reduced = self.reducer.step(state, inputs)
-        opt = state['optimizer']
-        v, momentum, lr, weight_decay = opt['v'], opt['momentum'], opt['lr'], opt.get(
-            'weight_decay', 0)
+        opt_params = state['optimizer']
+        v, momentum, lr, weight_decay = [opt_params[k] for k in ['v', 'momentum', 'lr', 'weight_decay']]
         for name, param in state['model'].named_parameters():
-            g = param.grad.data
+            p, g = param.data, param.grad.data
             mom = v[name]
-            if weight_decay != 0:
-                g.add_(weight_decay, param.data)
+            if weight_decay != 0: g.add_(weight_decay, p)
             mom.mul_(momentum).add_(g)
             g = g.add(momentum, mom)
-            param.data.add_(-lr, g)
+            p.add_(-lr, g)
         return state, reduced
 
 class piecewise_linear(namedtuple('piecewise_linear', ('knots', 'vals'))):
-    def __call__(self, x): return np.interp([x], self.knots, self.vals)[0]
+    def __call__(self, x): 
+        return np.interp([x], self.knots, self.vals)[0]
 
 
 def plot_lr_schedule(lr_schedule, epochs, ax):
     return ax.plot(*zip(*[(x, lr_schedule(x)) for x in np.arange(0, epochs, 0.1)]))
 
+
 class LRScheduler(Transducer):
-    def __init__(self, lr_schedule):
-        self.lr_schedule = lr_schedule if isinstance(lr_schedule, dict) else {'lr': lr_schedule}
+    def __init__(self, params):
+        self.params = params
 
     def initialize(self, state):
         if 'optimizer' not in state: state['optimizer'] = {}
         return self.reducer.initialize(state)
 
     def step(self, state, inputs):
-        progress = state['epoch'] + state['stats'][-1]['progress']
-        for k, f in self.lr_schedule.items():
+        state, reduced = self.reducer.step(state, inputs)
+        progress = state['epoch'] + state['processed'] / state['epoch_length']
+        for k, f in self.params.items():
             state['optimizer'][k] = f(progress) if callable(f) else f
-        return self.reducer.step(state, inputs)
+        return state, reduced
 
 
 class EarlyStop(Transducer):
@@ -219,17 +219,22 @@ class EpochRunner(Reducer):
         print(f'Starting training at '+time.strftime('%Y-%m-%d %H:%M:%S'))
         self.print_format('epoch', 'lr', 'trn_time', 'trn_loss',
                           'trn_acc', 'val_time', 'val_loss', 'val_acc')
+        if 'epoch' not in state: state['epoch'] = 0
         return state
 
     def step(self, state, item):
         train, test = item
+        
+        state['epoch_length'] = len(train)
         state = reduce(self.train_step, train, state)
+        
+        state['epoch_length'] = len(test)
         state = reduce(self.test_step, test, state)
+        
         state['epoch'] += 1
         stats = [state['epoch'], state['optimizer']['lr']] + [state['stats'][i][k]
                                                               for i in [-2, -1] for k in ['time', 'loss', 'acc']]
         self.print_format(*stats)
-
         return state, False
 
     def finalize(self, state):
