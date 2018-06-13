@@ -175,11 +175,12 @@ def plot_lr_schedule(lr_schedule, epochs, ax):
 
 class LRScheduler(Transducer):
     def __init__(self, lr_schedule):
-        self.lr_schedule = lr_schedule
+        self.lr_schedule = lr_schedule if isinstance(lr_schedule, dict) else {'lr': lr_schedule}
                                
     def step(self, state, inputs):
         progress = state['epoch'] + state['stats'][-1]['progress']
-        state['optimizer']['lr'] = self.lr_schedule(progress)
+        for k, f in self.lr_schedule.items():
+            state['optimizer'][k] = f(progress)
         return self.reducer.step(state, inputs)
 
 
