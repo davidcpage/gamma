@@ -202,21 +202,25 @@ class EarlyStop(Transducer):
         reduced = reduced or (self.counter == self.num_batches)
         return state, reduced
 
-class EpochRunner(Reducer):
-    @staticmethod
-    def print_format(*vals):
+class EpochRunner(Reducer):  
+    def print_format(self, *vals):
         #pylint: disable=E1101
         formats = {str: '{:10}', int: '{:10d}',
                    np.float64: '{:10.4f}', float: '{:10.4f}'}
         #pylint: enable=E1101
-        print(' '.join(formats[type(v)].format(v) for v in vals))
+        self.log(' '.join(formats[type(v)].format(v) for v in vals))
 
-    def __init__(self, train_step, test_step):
+    def __init__(self, train_step, test_step, log_file=None):
         self.train_step = train_step
         self.test_step = test_step
+        self.log_file = log_file
+    
+    def log(self, s):
+        print(s)
+        if self.log_file: self.log_file.write(s)
 
     def initialize(self, state):
-        print(f'Starting training at '+time.strftime('%Y-%m-%d %H:%M:%S'))
+        self.log(f'Starting training at '+time.strftime('%Y-%m-%d %H:%M:%S'))
         self.print_format('epoch', 'lr', 'trn_time', 'trn_loss',
                           'trn_acc', 'val_time', 'val_loss', 'val_acc')
         if 'epoch' not in state: state['epoch'] = 0
@@ -238,5 +242,5 @@ class EpochRunner(Reducer):
         return state, False
 
     def finalize(self, state):
-        print(f'Finished training at '+time.strftime('%Y-%m-%d %H:%M:%S'))
+        self.log(f'Finished training at '+time.strftime('%Y-%m-%d %H:%M:%S'))
         return state
