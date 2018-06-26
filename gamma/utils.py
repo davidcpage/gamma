@@ -1,5 +1,5 @@
 import pydot
-from IPython.display import display, SVG, HTML
+from IPython.display import display, HTML
 from gamma.core import FuncCache, input_nodes, depths, path_iter
 import os
 from urllib.request import urlretrieve
@@ -54,23 +54,24 @@ def stub(path):
 
 def draw(graphs, legend=True, scale=1, sep='/', **kwargs):
     if isinstance(graphs, dict): #single graph
-        graphs = [graphs]
+        graphs = (graphs,)
     html, types, = '', []
     for graph in graphs:
+        if not isinstance(graph, dict): continue
         type_name = lambda t: getattr(t, '__name__', t) 
-        graph = {n: dict(a, type=type_name(a['type'])) for (n, a) in graph.items()}
+        graph = {n: (dict(a, type=type_name(a['type'])), i) for (n, (a, i)) in graph.items()}
         height = max(depths(graph).values())
         size = max(len(graph)/height, (height-0.3))*scale/2
-        nodes = [(k, tuple(path_iter(attr['label'], sep)),
+        nodes = [(k, tuple(path_iter(k, sep)),
                 {'tooltip': '%s %s %.1000r' % (str(k), attr['type'], attr['params']),
                 'fillcolor': COLORS[attr['type']],
-                }) for k, attr in graph.items()]
+                }) for k, (attr, i) in graph.items()]
         edges = ((src, k, {}) for k, n in graph.items()
                 for src in input_nodes(n))
         svg = draw_pydot(nodes, edges, size=size, **kwargs)
         width = int(re.search('width="([0-9]*)pt"',svg)[1])
         html += f'<div style="min-width: {width}pt">{svg}</div>'
-        types += [a['type'] for a in graph.values()]
+        types += [a['type'] for (a, i) in graph.values()]
     if legend:
         html = ColorMap.html({t: COLORS[t] for t in types}) + html
     display(HTML(html))

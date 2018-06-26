@@ -31,7 +31,7 @@ class var(object):
 
 
 def walk(key, d):
-    while isinstance(key, var) and key in d:
+    while key in d:
         key = d[key]
     return key
 
@@ -58,8 +58,8 @@ class UnificationError(Exception):
 
 
 def _unify_inplace(u, v, s): #i.e. the bindings dict `s` gets updated in place
-    u = walk(u, s)
-    v = walk(v, s)
+    if isinstance(u, var): u = walk(u, s)
+    if isinstance(v, var): v = walk(v, s)
     #u and v could be vars, consts or (nested) datastructures of vars and consts
     if (u is v): return
     #numpy `==` is broken and breaks `== `for nested structure containing numpy arrays
@@ -175,7 +175,8 @@ def restrict(graph, inputs, outputs):
 
 
 def input_nodes(node_attr):
-    res = node_attr['inputs']
+    #res = node_attr['inputs']
+    res = node_attr[1]
     return () if res is Wildcard else res
  
 
@@ -198,8 +199,8 @@ def strip(graph, nodes=external_inputs):
     #or constants. Removing nodes in this way will typically break a computation graph.
     if callable(nodes):
         nodes = nodes(graph)
-    return {n: dict(a, inputs=[i for i in input_nodes(a) if i not in nodes])
-            for n, a in graph.items() if n not in nodes}
+    return {n: (a, [x for x in i if x not in nodes])
+            for n, (a, i) in graph.items() if n not in nodes}
 
 
 def truncate(graph, k):
@@ -212,17 +213,21 @@ def gen_ids(reserved):
     
 
 def reindex(graph, node_map=None):
+    if node_map == {}:
+        return graph
     if node_map is None:
         node_map =  dict(zip((n for n, _ in topological_sort(graph)), gen_ids(reserved=external_inputs(graph))))
-    node_map = new_node_ids(graph) if node_map is None else node_map
+    #node_map = new_node_ids(graph) if node_map is None else node_map
     f = lambda x: node_map.get(x, x)
     map_inputs = lambda inputs: (inputs if isinstance(inputs, var) else [f(i) for i in inputs])
-    return {f(node): dict(attr, inputs=map_inputs(input_nodes(attr))) for node, attr in graph.items()}
+    return {f(node): (a, map_inputs(i)) for node, (a, i) in graph.items()}
+
 
 def index_by_labels(graph, sep='/'):
-    groups = gather(((path_str(a['label'], sep), n) for n, a in graph.items()), list)
-    node_map={n: (f'{k}_{j}' if j else f'{k}') for (k, group) in groups.items()  for (j, n) in enumerate(group)}
-    return reindex(graph, node_map)
+    #groups = gather(((path_str(a['label'], sep), n) for n, a in graph.items()), list)
+    #node_map={n: (f'{k}_{j}' if j else f'{k}') for (k, group) in groups.items()  for (j, n) in enumerate(group)}
+    return reindex(graph, {n: path_str(n, sep) for n in graph.keys()})
+
 
 def make_label_func(label_rules, match_prefix=False):
     """
@@ -244,32 +249,21 @@ def make_label_func(label_rules, match_prefix=False):
         return label
     return label_func
 
-def relabel(graph, label_func):
-    if isinstance(label_func, dict):
-        d = label_func
-        label_func = lambda x: d.get(x, x)
-    return {node: dict(attr, label=label_func(attr['label']))
-            for node, attr in graph.items()}
 
-def add_prefix(prefix, graph):
-    return relabel(graph, lambda label: (prefix, label))
-
-
-def make_node_attr(type, params=None, label=None, inputs=None):
+def make_node_attr(type, params=None, inputs=None):
     params = {} if params is None else params
-    inputs = [] if inputs is None else inputs
-    return {'type': type, 'params': params, 'label': label, 'inputs': inputs}
+    #inputs = [] if inputs is None else inputs
+    return ({'type': type, 'params': params}, inputs)
 
 
-def pipeline(nodes, input=None):
-    if input is None: input = nodes[0]['inputs'][0]
-    return {n['label']: dict(n, inputs=[i]) for (n, i) in zip(nodes, [input]+[node['label'] for node in nodes])}
+def pipeline(nodes):
+    return {name: (val, inputs[0] if inputs else [nodes[idx-1][0]]) for idx, (name, val, *inputs) in enumerate(nodes)} 
 
 
 def make_pattern(graph):
-    return {var(n): make_node_attr(a['type'], var(f'{n}_params'), var(a['label']), 
-             [var(x) for x in a['inputs']]) 
-      for n, a in graph.items()}
+    return {var(n): make_node_attr(a['type'], var(f'{n}_params'), 
+             [var(x) for x in i]) 
+      for n, (a, i) in graph.items()}
 
 
 def bind_vars(func):
@@ -280,7 +274,7 @@ def bind_vars(func):
     return func_wrapper
 
 
-def make_subgraph_node(subgraph, label, input_names=None):
+def make_subgraph_node(subgraph, input_names=None):
     #we need to collect the set of all external_inputs of the subgraph
     #and make these inputs to the node. we rename inputs for internal use
     #in params['nodes] so that if reindex is called on the outer graph there 
@@ -288,7 +282,7 @@ def make_subgraph_node(subgraph, label, input_names=None):
     inputs = list(external_inputs(subgraph))
     input_names = input_names or (f'in{i}' for i in range(len(inputs)))
     return make_node_attr('Graph', {'nodes': reindex(subgraph, dict(zip(inputs, input_names))), 
-                                        'input_names': input_names}, label, inputs)
+                                        'input_names': input_names}, inputs)
 
 
 def move_to_subgraphs(groups, graph):
@@ -301,7 +295,7 @@ def move_to_subgraphs(groups, graph):
     remove = {n for _, nodes in groups for n in nodes}
     g = union({n: a for n, a in graph.items() if n not in remove}, subgraph_nodes)
     inputs = {n for a in g.values() for n in input_nodes(a)}
-    ports = {n: make_node_attr('Port', {'node': n}, graph[n]['label'], [group_name]) for group_name, nodes in groups for n in nodes if n in inputs}  
+    ports = {n: make_node_attr('Port', {'node': n}, [group_name]) for group_name, nodes in groups for n in nodes if n in inputs}  
     return union(g, ports)
 
 
@@ -319,7 +313,7 @@ def path_str(label, sep='/'):
 
 
 def collapse(graph, levels=2):
-    groups = gather((tuple(path_iter(a['label']))[:levels], n) for n, a in graph.items())
+    groups = gather((tuple(path_iter(n))[:levels], n) for n in graph.keys())
     groups = [(k, nodes) for k, nodes in groups.items() if len(nodes) > 1]
     return move_to_subgraphs(groups, graph)
 
@@ -339,14 +333,13 @@ def plan_query(pattern, graph):
     for node in walk_nodes(p_nbrs, {starting_node}):
         if node in pattern:
             #match node_attr
-            query.append((pattern[node], lambda ctxt, node=node: [graph.get(ctxt[node], None)]))
+            query.append((pattern[node], lambda ctxt, node=node: [graph.get(reify(node, ctxt), None)]))
         #match neighbouring nodes
         query.extend(
-            (nbr, lambda ctxt, node=node, port=port: nbhds['graph'][ctxt[node]].get(port, ())) 
+            (nbr, lambda ctxt, node=node, port=port: nbhds['graph'][reify(node, ctxt)].get(port, ())) 
               for port, nbrs in nbhds['pattern'].get(node, {}).items() for nbr in nbrs)
     return query
     
-
 def _match(LHS, candidates, ctxt):
     inplace = (len(candidates) == 1)
     for RHS in candidates:
@@ -368,14 +361,29 @@ def search(pattern, graph):
     proposals = _search(pattern, graph)
     return [{k:v for (k, v) in proposal.items() if not isinstance(k.token, Wildcard)} for proposal in proposals]
 
+def reverse(rule):
+    LHS, RHS, *redirects = rule
+    rule =  RHS, LHS, *((y, x) for (x, y) in redirects)
+    return rule
+
+
 def apply_rule(graph, rule):
-    LHS, RHS = rule
+    LHS, RHS, *redirects = rule
     LHS = reify(LHS, {}) #replace Wildcards with var(Wildcard()); do it here so that we know which keys to remove below
     matches = _search(LHS, graph)
     # remove matched nodes except for inputs
     matched_nodes = {n for match in matches for n in reify(list(LHS.keys()), match)}
     ids = gen_ids(reserved=external_inputs(graph).union(graph))
-    productions = [reify(RHS, union({k: next(ids) for k in RHS.keys()}, match)) for match in matches]
-    return union({k: v for k, v in graph.items() if k not in matched_nodes}, *productions)
+   
+    redirects = dict(r for match in matches for r in reify(redirects, match))
+    productions = [reify(RHS, match) for match in matches]
+    productions = [{k: (a, [(x if x in p else walk(x, redirects)) for x in i]) for (k, (a, i)) in p.items()} for p in productions]
+    graph = {k: (a, [walk(x, redirects) for x in i]) for (k, (a, i)) in graph.items() if k not in matched_nodes}
+    return union(graph, *productions)
+    
 
-def apply_rules(graph, rules): return reduce(apply_rule, rules, graph)
+def apply_rules(graph, rules, idx_by_labels=True): 
+    graph = reduce(apply_rule, rules, graph)
+    if idx_by_labels: 
+        graph = index_by_labels(graph)
+    return graph

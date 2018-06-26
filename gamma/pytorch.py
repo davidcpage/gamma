@@ -9,14 +9,14 @@ class TorchGraph(nn.Module):
     def __init__(self, graph):
         super().__init__()
         self.graph = dict(topological_sort(graph))
-        for n, a in self.graph.items(): 
+        for n, (a, i) in self.graph.items(): 
             setattr(self, n, a['type'](**a['params']))
 
     def forward(self, inputs):
         self.cache = dict(inputs)
-        for n, a in self.graph.items():
+        for n, (a, i) in self.graph.items():
             #print(n)
-            self.cache[n] = getattr(self, n)(*[self.cache[i] for i in a['inputs']])
+            self.cache[n] = getattr(self, n)(*[self.cache[x] for x in i])
         return self.cache
 
 def rename(state_dict, rules):
@@ -103,13 +103,12 @@ class Constant(nn.Module):
     def forward(self): return self.value
 
 
-def _make_node_attr(node_def, label, *args, inputs_=None, **kwargs):
-    params = node_def.params.bind(*args, **kwargs)
-    params.apply_defaults()
-    return make_node_attr(node_def.type, dict(params.arguments), label, inputs_)
+class NodeDef(namedtuple('NodeDef', ['type', 'params'])):
+    def __call__(self, *args, **kwargs): 
+        params = self.params.bind(*args, **kwargs)
+        params.apply_defaults()
+        return {'type': self.type, 'params': dict(params.arguments)}
 
-NodeDef = namedtuple('NodeDef', ['type', 'params'])
-NodeDef.__call__ = _make_node_attr
 
 def node(type, **defaults): 
     sig = signature(type)
@@ -141,11 +140,39 @@ activation_func = node(ActivationFunc)
 ## Rules
 ##############
 
+ConvBN = namedtuple('ConvBN', ['in_channels', 'out_channels', 'kernel_size', 'stride', 
+            'padding', 'groups', 'activation', 'eps'])
+conv_bn = node(ConvBN, stride=1, padding=0, groups=1, activation=None, eps=1e-5)
+
+@bind_vars
+def expand_conv_bns(name, in_channels, out_channels, kernel_size, stride, padding, groups, activation, eps, _in):
+    LHS = {name: (conv_bn(in_channels, out_channels, kernel_size, stride, padding, groups, activation, eps), [_in])}
+    RHS = pipeline([
+        ((name, 'conv'), conv(in_channels, out_channels, kernel_size, stride=stride, padding=padding, groups=groups,
+                    bias=False), [_in]),
+        ((name, 'bn'), bn(out_channels, eps=eps)),
+        ((name, 'act'), activation_func(activation_func=activation)),
+    ])
+    return LHS, RHS, (name, (name, 'act'))
+
+
+zero_pad = node(nn.ZeroPad2d)
+@bind_vars
+def match_tf_padding(name, in_channels, out_channels, kernel_size, groups, _in):
+    LHS = {(name, 'conv'): (conv(in_channels, out_channels, kernel_size, stride=2, padding=1, 
+                groups=groups, bias=False), [_in])}
+    RHS = pipeline([
+        ((name, 'zero_pad'), zero_pad((0,1,0,1)), [_in]),
+        ((name, 'conv'), conv(in_channels, out_channels, kernel_size, stride=2, padding=0, groups=groups, bias=False))
+    ])
+    return LHS, RHS
+
+"""
 _in, _out, _0, _1, _2, _3 = var('in'), var('out'), *map(var, range(4))
 
 @bind_vars
 def expand_conv(conv_name, in_channels, out_channels, kernel_h, kernel_w, stride, padding):
-    LHS = {_out: conv(conv_name, [in_channels, out_channels, (kernel_h, kernel_w), stride, padding, False], [_in])}
+    LHS = {_out: conv(conv_name, in_channels, out_channels, (kernel_h, kernel_w), stride, padding, False, [_in])}
     RHS = {
         _0: constant((conv_name, 'weight'), [None, (out_channels, in_channels, kernel_h, kernel_w)], []),
         _out: conv_op((conv_name, 'out'), [stride, padding], [_in, _0])
@@ -173,32 +200,4 @@ def expand_bn(bn_name, num_features):
         _out: bn_op((bn_name, 'out'), [False], [_in, _0, _1, _2, _3])
     }
     return LHS, RHS
-
-
-ConvBN = namedtuple('ConvBN', ['in_channels', 'out_channels', 'kernel_size', 'stride', 
-            'padding', 'groups', 'activation', 'eps'])
-conv_bn = node(ConvBN, stride=1, padding=0, groups=1, activation=None, eps=1e-5)
-
-@bind_vars
-def expand_conv_bns(name, in_channels, out_channels, kernel_size, stride, padding, groups, activation, eps):
-    LHS = {_out: conv_bn(name, in_channels, out_channels, kernel_size, stride, padding, groups, activation, eps,
-            inputs_ = [_in])}
-    RHS = {
-        _0: conv((name, 'conv'), in_channels, out_channels, kernel_size, stride=stride, padding=padding, groups=groups,
-                    bias=False, inputs_=[_in]),
-        _1: bn((name, 'bn'), out_channels, eps=eps, inputs_=[_0]),
-        _out: activation_func((name, 'act'), activation_func=activation, inputs_=[_1])
-    }
-    return LHS, RHS
-
-
-zero_pad = node(nn.ZeroPad2d)
-@bind_vars
-def match_tf_padding(name, in_channels, out_channels, kernel_size, groups):
-    LHS = {_out: conv((name, 'conv'), in_channels, out_channels, kernel_size, stride=2, padding=1, groups=groups, bias=False, inputs_=[_in])}
-    RHS = {
-        _0: zero_pad((name, 'zero_pad'), (0,1,0,1), inputs_=[_in]),
-        _out: conv((name, 'conv'), in_channels, out_channels, kernel_size, stride=2, padding=0, groups=groups, bias=False, inputs_=[_0])
-    }
-    return LHS, RHS
-
+"""

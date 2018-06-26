@@ -17,28 +17,29 @@ def from_onnx(onnx_model):
     constants =  (('Constant', {'value': v}, v.name, []) for v in g.get('initializer',[]))
     net =        ((n['op_type'], dict(n.get('attribute',())), label, n.get('input', [])) 
                    for n in g['node'] for label in n['output'])
-    return {l: make_node_attr(t, p, l, i) for (t, p, l, i) in chain(ext_inputs, constants, net)}
+    return {l: make_node_attr(t, p, i) for (t, p, l, i) in chain(ext_inputs, constants, net)}
 
 
 def to_onnx(graph, name, outputs=None, initializer=None):
     graph = list(topological_sort(graph))
     from_np = lambda a: numpy_helper.from_array(a) if isinstance(a, np.ndarray) else a
-    nodes = [onnx.helper.make_node(attr['type'], [str(i) for i in attr['inputs']], [str(n)],
-                                   **{k: from_np(v) for (k,v) in attr['params'].items()})
-             for (n, attr) in graph if attr['type'] != 'Input']
+    nodes = [onnx.helper.make_node(a['type'], [str(x) for x in i], [str(n)],
+                                   **{k: from_np(v) for (k,v) in a['params'].items()})
+             for (n, (a, i)) in graph if a['type'] != 'Input']
     inputs = [make_tensor_value_info(str(n), **a['params'])
-              for (n, a) in graph if a['type'] == 'Input']
+              for (n, (a, i)) in graph if a['type'] == 'Input']
     outputs = [] if outputs is None else [make_tensor_value_info(str(n), **a)
-               for (n, a) in outputs]
+               for (n, (a, i)) in outputs]
     onnx_graph = onnx.helper.make_graph(nodes, name, inputs, outputs, initializer=initializer)
     return onnx.helper.make_model(onnx_graph)
 
 
 def from_tflow(graph_def):
-    graph = {n['name']: make_node_attr(n['op'], n.get('attr', {}), n['name'], 
+    graph = {n['name']: make_node_attr(n['op'], n.get('attr', {}), 
                          [i.split('^', 1)[-1].split(':', 1)[0] for i in n.get('input', [])])
-             for n in unwrap(graph_def.node)}   
-    return reindex(graph)
+             for n in unwrap(graph_def.node)}  
+    return graph
+    #return reindex(graph)
 
 def _to_string(label):
     return '/'.join(path_iter(label))
