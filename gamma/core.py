@@ -44,6 +44,8 @@ class Wildcard():
 def reify(x, s):
     if isinstance(x, var):
         return reify(s[x], s) if x in s else x
+    elif isinstance(x, Path):
+        return path(reify(x.x, s), reify(x.y, s))
     elif isinstance(x, (tuple, list)):
         return type(x)(reify(xx, s) for xx in x)
     elif isinstance(x, dict):
@@ -56,6 +58,13 @@ def reify(x, s):
 class UnificationError(Exception):
     pass
 
+from collections import namedtuple
+Path = namedtuple('Path', ('x', 'y'))
+
+def path(x, y):
+    if isinstance(x, str) and isinstance(y, str):
+        return '/'.join([x, y])
+    return Path(x, y)
 
 def _unify_inplace(u, v, s): #i.e. the bindings dict `s` gets updated in place
     if isinstance(u, var): u = walk(u, s)
@@ -70,6 +79,12 @@ def _unify_inplace(u, v, s): #i.e. the bindings dict `s` gets updated in place
         pass    
     if isinstance(u, var): s[u] = v; return #occurs checks are missing
     if isinstance(v, var): s[v] = u; return
+    if isinstance(u, Path) and isinstance(v, str):
+        x, y = u
+        if isinstance(x, str) and v.startswith(x +'/'):
+            return _unify_inplace(y, v[len(x)+1:], s)
+        elif isinstance(y, str) and v.endswith('/'+y):
+            return _unify_inplace(x, v[:-len(y)-1], s)
     if type(u) == type(v):
         if (isinstance(u, (list, tuple)) and len(u) == len(v)):
             for uu, vv in zip(u, v):  
@@ -223,10 +238,10 @@ def reindex(graph, node_map=None):
     return {f(node): (a, map_inputs(i)) for node, (a, i) in graph.items()}
 
 
-def index_by_labels(graph, sep='/'):
+#def index_by_labels(graph, sep='/'):
     #groups = gather(((path_str(a['label'], sep), n) for n, a in graph.items()), list)
     #node_map={n: (f'{k}_{j}' if j else f'{k}') for (k, group) in groups.items()  for (j, n) in enumerate(group)}
-    return reindex(graph, {n: path_str(n, sep) for n in graph.keys()})
+#    return reindex(graph, {n: path_str(n, sep) for n in graph.keys()})
 
 
 def make_label_func(label_rules, match_prefix=False):
@@ -256,9 +271,11 @@ def make_node_attr(type, params=None, inputs=None):
     return ({'type': type, 'params': params}, inputs)
 
 
-def pipeline(nodes):
-    return {name: (val, inputs[0] if inputs else [nodes[idx-1][0]]) for idx, (name, val, *inputs) in enumerate(nodes)} 
-
+def pipeline(nodes, prefix=None):
+    graph = {name: (val, inputs[0] if inputs else [nodes[idx-1][0]]) for idx, (name, val, *inputs) in enumerate(nodes)} 
+    if prefix is not None:
+        graph = reindex(graph, {name: path(prefix, name) for name in graph.keys()})
+    return graph
 
 def make_pattern(graph):
     return {var(n): make_node_attr(a['type'], var(f'{n}_params'), 
@@ -382,8 +399,6 @@ def apply_rule(graph, rule):
     return union(graph, *productions)
     
 
-def apply_rules(graph, rules, idx_by_labels=True): 
-    graph = reduce(apply_rule, rules, graph)
-    if idx_by_labels: 
-        graph = index_by_labels(graph)
-    return graph
+def apply_rules(graph, rules): 
+    return reduce(apply_rule, rules, graph)
+  

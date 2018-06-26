@@ -26,7 +26,7 @@ def rename(state_dict, rules):
     return {RHS.format(*p.fixed, **p.named): v for p, RHS, v in parses if p}
 
 
-def load_state(net, state_dict, sep='.'):
+def load_state(net, state_dict, sep='/'):
     for key, val in state_dict.items():
         *head, tail = key.split(sep)
         mod = getattr(net, sep.join(head))
@@ -148,23 +148,23 @@ conv_bn = node(ConvBN, stride=1, padding=0, groups=1, activation=None, eps=1e-5)
 def expand_conv_bns(name, in_channels, out_channels, kernel_size, stride, padding, groups, activation, eps, _in):
     LHS = {name: (conv_bn(in_channels, out_channels, kernel_size, stride, padding, groups, activation, eps), [_in])}
     RHS = pipeline([
-        ((name, 'conv'), conv(in_channels, out_channels, kernel_size, stride=stride, padding=padding, groups=groups,
+        ('conv', conv(in_channels, out_channels, kernel_size, stride=stride, padding=padding, groups=groups,
                     bias=False), [_in]),
-        ((name, 'bn'), bn(out_channels, eps=eps)),
-        ((name, 'act'), activation_func(activation_func=activation)),
-    ])
-    return LHS, RHS, (name, (name, 'act'))
+        ('bn', bn(out_channels, eps=eps)),
+        ('act', activation_func(activation_func=activation)),
+    ], prefix=name)
+    return LHS, RHS, (name, path(name, 'act'))
 
 
 zero_pad = node(nn.ZeroPad2d)
 @bind_vars
 def match_tf_padding(name, in_channels, out_channels, kernel_size, groups, _in):
-    LHS = {(name, 'conv'): (conv(in_channels, out_channels, kernel_size, stride=2, padding=1, 
+    LHS = {path(name, 'conv'): (conv(in_channels, out_channels, kernel_size, stride=2, padding=1, 
                 groups=groups, bias=False), [_in])}
     RHS = pipeline([
-        ((name, 'zero_pad'), zero_pad((0,1,0,1)), [_in]),
-        ((name, 'conv'), conv(in_channels, out_channels, kernel_size, stride=2, padding=0, groups=groups, bias=False))
-    ])
+        ('zero_pad', zero_pad((0,1,0,1)), [_in]),
+        ('conv', conv(in_channels, out_channels, kernel_size, stride=2, padding=0, groups=groups, bias=False))
+    ], prefix=name)
     return LHS, RHS
 
 """
