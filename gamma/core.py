@@ -1,6 +1,6 @@
 from collections import defaultdict
 from itertools import count, chain, islice
-from functools import wraps, reduce
+import functools 
 from inspect import signature
 
 ################
@@ -292,7 +292,7 @@ def make_pattern(graph):
 
 def bind_vars(func):
     defaults = {k: var(k) for k in signature(func).parameters}
-    @wraps(func)
+    @functools.wraps(func)
     def func_wrapper(**kwargs):
         return func(**union(defaults, kwargs))
     return func_wrapper
@@ -407,5 +407,5 @@ def apply_rule(graph, rule):
     
 
 def apply_rules(graph, rules): 
-    return reduce(apply_rule, rules, graph)
+    return functools.reduce(apply_rule, rules, graph)
   
