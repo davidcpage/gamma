@@ -8,8 +8,9 @@ from gamma.pytorch import *
 prep = node(namedtuple('Prep', ('out_channels')))
 classifier = node(namedtuple('Classifier', ('in_channels', 'out_channels')))
 residual_block = node(namedtuple('ResidualBlock', ['in_channels', 'out_channels', 'stride', 
-                    'h_channels', 'groups', 'act', 'join']))
+    'h_channels', 'groups', 'act', 'join']))
 block = node(namedtuple('Block', ['in_channels', 'out_channels', 'stride', 'h_channels', 'groups', 'act']))
+preact_block = node(namedtuple('PreActBlock', ['in_channels', 'out_channels', 'stride']))
 conv_bn = node(namedtuple('ConvBN', ['in_channels', 'out_channels', 'kernel_size', 'stride', 
             'padding', 'groups', 'activation', 'eps']), stride=1, padding=0, groups=1, activation=F.relu, eps=1e-5)
  
@@ -53,59 +54,76 @@ def mobilenetV2(num_classes):
 
     return net_initial, rules, apply_rules(net_initial, rules)
 
-resnet_params = {
-    18: [
+config = {
+    'resnet18': [
         [(64, 64, 1)] + [(64, 64, 1)]*1,
         [(64, 128, 2)] + [(128, 128, 1)]*1,
         [(128, 256, 2)] + [(256, 256, 1)]*1,
         [(256, 512, 2)] + [(512, 512, 1)]*1,
     ],
-    34: [
+    'resnet34': [
         [(64, 64, 1)] + [(64, 64, 1)]*2,
         [(64, 128, 2)] + [(128, 128, 1)]*3,
         [(128, 256, 2)] + [(256, 256, 1)]*5,
         [(256, 512, 2)] + [(512, 512, 1)]*2,
     ],
-    50: [
+    'resnet50': [
         [(64, 256, 1, 64)] + [(256, 256, 1, 64)]*2,
         [(256, 512, 2, 128)] + [(512, 512, 1, 128)]*3,
         [(512, 1024, 2, 256)] + [(1024, 1024, 1, 256)]*5,
         [(1024, 2048, 2, 512)] + [(2048, 2048, 1, 512)]*2,
     ],
-    101: [
+    'resnet101': [
         [(64, 256, 1, 64)] + [(256, 256, 1, 64)]*2,
         [(256, 512, 2, 128)] + [(512, 512, 1, 128)]*3,
         [(512, 1024, 2, 256)] + [(1024, 1024, 1, 256)]*22,
         [(1024, 2048, 2, 512)] + [(2048, 2048, 1, 512)]*2,
     ],
-    152: [
+    'resnet152': [
         [(64, 256, 1, 64)] + [(256, 256, 1, 64)]*2,
         [(256, 512, 2, 128)] + [(512, 512, 1, 128)]*7,
         [(512, 1024, 2, 256)] + [(1024, 1024, 1, 256)]*35,
         [(1024, 2048, 2, 512)] + [(2048, 2048, 1, 512)]*2,
+    ],
+    #cifar models
+    'resnet18_s': [
+        [(64, 64, 1)] + [(64, 64, 1)]*1,
+        [(64, 128, 2)] + [(128, 128, 1)]*1,
+        [(128, 256, 2)] + [(256, 256, 1)]*1,
+        [(256, 256, 2)] + [(256, 256, 1)]*1,
+    ],
+    'wrn_22_6': [
+        [(16,  96,  1), (96,  96,  1), (96,  96,  1)],
+        [(96,  192, 2), (192, 192, 1), (192, 192, 1)],
+        [(192, 384, 2), (384, 384, 1), (384, 384, 1)],
     ]
 }
 
-def resnet(depth, num_classes):
-    layer_params = resnet_params[depth]
-    r = lambda c_in, c_out, s, h=None: residual_block(c_in, c_out, s, h, 1, F.relu, add_relu(True)) 
-    layers = [(path(f'layer_{i}', f'block_{j}'), r(*block)) for (i, layer) in enumerate(layer_params, 1) for 
-        j, block in enumerate(layer)]
-    net_initial = basic_net(layers, num_classes)
-    
-    rules =  [
-        resnet_prep(), 
-        resnet_classifier(), 
-        expand_residuals(),
-        replace_identity_shortcuts(), 
-        replace_shortcuts(), 
-        expand_blocks_3_3(), 
-        expand_blocks_1_3_1(), 
-        expand_conv_bns()
-    ]
-
+def build_resnet(layer_params, layer_func, rules, num_classes):
+    layers = [(path(f'layer_{i}', f'block_{j}'), layer_func(*block)) for 
+        (i, layer) in enumerate(layer_params, 1) for j, block in enumerate(layer)]
+    net_initial = basic_net(layers, num_classes)  
     return net_initial, rules, apply_rules(net_initial, rules)
+    
+def resnet(depth, num_classes):
+    layer_params = config[f'resnet{depth}']
+    layer_func = lambda c_in, c_out, s, h=None: residual_block(c_in, c_out, s, h, 1, F.relu, add_relu(True))
+    rules = [
+        resnet_prep(), resnet_classifier(), 
+        expand_residuals(), replace_identity_shortcuts(), replace_shortcuts_conv_bn(), 
+        expand_blocks_3_3(), expand_blocks_1_3_1(), expand_conv_bns()
+    ]
+    return build_resnet(layer_params, layer_func, rules, num_classes)
 
+def cifar_resnet(name, num_classes=10):
+    layer_params = config[name]
+    layer_func = preact_block
+    rules = [
+         cifar_resnet_prep(), cifar_resnet_classifier(),
+         expand_conv_bns(), expand_preact_blocks(), replace_identity_shortcuts(), replace_shortcuts_conv(),
+    ]
+    return build_resnet(layer_params, layer_func, rules, num_classes)
+   
 
 #######################
 ### Rewrite rules
@@ -149,7 +167,13 @@ def replace_identity_shortcuts(block_name, in_channels, _in):
     return LHS, RHS
 
 @bind_vars
-def replace_shortcuts(block_name, in_channels, out_channels, stride, _in):
+def replace_shortcuts_conv(block_name, in_channels, out_channels, stride, _in):
+    LHS = {path(block_name, 'shortcut'): (shortcut(in_channels, out_channels, stride), [_in])}
+    RHS = {path(block_name, 'downsample'): (conv(in_channels, out_channels, (1, 1), stride, 0, bias=False), [_in])}
+    return LHS, RHS, (path(block_name, 'shortcut'), path(block_name, 'downsample'))
+
+@bind_vars
+def replace_shortcuts_conv_bn(block_name, in_channels, out_channels, stride, _in):
     LHS = {path(block_name, 'shortcut'): (shortcut(in_channels, out_channels, stride), [_in])}
     RHS = {path(block_name, 'downsample'): (conv_bn(in_channels, out_channels, (1, 1), stride, activation=None), [_in])}
     return LHS, RHS, (path(block_name, 'shortcut'), path(block_name, 'downsample'))
@@ -173,6 +197,21 @@ def expand_blocks_1_3_1(block_name, in_channels, out_channels, stride, h_channel
     ], prefix=block_name)
     return LHS, RHS, (block_name, path(block_name, 'conv_3'))
 
+@bind_vars
+def expand_preact_blocks(block_name, in_channels, out_channels, stride, _in):
+    LHS = {block_name: (preact_block(in_channels, out_channels, stride), [_in])}
+    RHS = pipeline([
+        ('bn1', bn(in_channels), [_in]),
+        ('relu1', relu(True)),
+        ('conv1', conv(in_channels, out_channels, (3, 3), stride, 1, bias=False)),
+        ('bn2', bn(out_channels)),
+        ('relu2', relu(True)),
+        ('conv2', conv(out_channels, out_channels, (3, 3), 1, 1, bias=False)),
+        ('shortcut', shortcut(in_channels, out_channels, stride), ['relu1']),
+        ('add', add(True), ['conv2', 'shortcut']),
+    ], prefix=block_name)
+    return LHS, RHS, (block_name, path(block_name, 'add'))
+
 
 @bind_vars
 def expand_conv_bns(name, in_channels, out_channels, kernel_size, stride, padding, groups, activation, eps, _in):
@@ -185,4 +224,18 @@ def expand_conv_bns(name, in_channels, out_channels, kernel_size, stride, paddin
     ], prefix=name)
     return LHS, RHS, (name, path(name, 'act'))
 
+@bind_vars
+def cifar_resnet_prep(out_channels, _in):
+    LHS = {'prep': (prep(out_channels), [_in])}
+    RHS = {'prep': (conv(3, out_channels, (3, 3), stride=1, padding=1, bias=False), [_in])}
+    return LHS, RHS
+
+@bind_vars
+def cifar_resnet_classifier(in_channels, out_channels, _in):
+    LHS = {'classifier': (classifier(in_channels, out_channels), [_in])}
+    RHS = pipeline([
+            ('pool', pool(), [_in]),
+            ('fc', linear(in_channels*2, out_channels)),
+    ])
+    return LHS, RHS, ('classifier', 'fc')
 

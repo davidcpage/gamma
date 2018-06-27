@@ -46,6 +46,8 @@ def reify(x, s):
         return reify(s[x], s) if x in s else x
     elif isinstance(x, Path):
         return path(reify(x.x, s), reify(x.y, s))
+    elif isinstance(x, Times):
+        return reify(x.var, s)*x.n
     elif isinstance(x, (tuple, list)):
         return type(x)(reify(xx, s) for xx in x)
     elif isinstance(x, dict):
@@ -60,6 +62,8 @@ class UnificationError(Exception):
 
 from collections import namedtuple
 Path = namedtuple('Path', ('x', 'y'))
+Times = namedtuple('Times', ('var', 'n'))
+var.__mul__ = lambda self, other: Times(self, other)
 
 def path(x, y):
     if isinstance(x, str) and isinstance(y, str):
@@ -79,6 +83,9 @@ def _unify_inplace(u, v, s): #i.e. the bindings dict `s` gets updated in place
         pass    
     if isinstance(u, var): s[u] = v; return #occurs checks are missing
     if isinstance(v, var): s[v] = u; return
+    if isinstance(u, Times) and isinstance(v, int):
+        u_var, n = u
+        return _unify_inplace(u_var, v*n, s)
     if isinstance(u, Path) and isinstance(v, str):
         x, y = u
         if isinstance(x, str) and v.startswith(x +'/'):
