@@ -3,7 +3,7 @@ import numpy as np
 from google.protobuf.json_format import ParseDict, MessageToDict
 import onnx
 from onnx import numpy_helper
-from .core import reindex, make_node_attr, path_iter, topological_sort
+from .core import make_node_attr, path_iter, topological_sort
 from .protobuf import unwrap
 
 def make_tensor_value_info(name, elem_type, *args, **kwargs):
@@ -39,8 +39,7 @@ def from_tflow(graph_def):
                          [i.split('^', 1)[-1].split(':', 1)[0] for i in n.get('input', [])])
              for n in unwrap(graph_def.node)}  
     return graph
-    #return reindex(graph)
-
+  
 def _to_string(label):
     return '/'.join(path_iter(label))
 

@@ -51,6 +51,8 @@ def parent(path):
 def stub(path):
     return path[-1]
  
+get_type = lambda a: a['type'] if isinstance(a, dict) else type(a)
+get_params = lambda a: a['params'] if isinstance(a, dict) else {} #better logic here
 
 def draw(graphs, legend=True, scale=1, sep='/', **kwargs):
     if isinstance(graphs, dict): #single graph
@@ -59,7 +61,7 @@ def draw(graphs, legend=True, scale=1, sep='/', **kwargs):
     for graph in graphs:
         if not isinstance(graph, dict): continue
         type_name = lambda t: getattr(t, '__name__', t) 
-        graph = {n: (dict(a, type=type_name(a['type'])), i) for (n, (a, i)) in graph.items()}
+        graph = {n: ({'type': type_name(get_type(a)), 'params': get_params(a)}, i) for (n, (a, i)) in graph.items()}
         height = max(depths(graph).values())
         size = max(len(graph)/height, (height-0.3))*scale/2
         nodes = [(k, tuple(path_iter(k, sep)),

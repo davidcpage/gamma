@@ -9,7 +9,7 @@ class TorchGraph(nn.Module):
     def __init__(self, graph):
         super().__init__()
         self.graph = dict(topological_sort(graph))
-        for n, (a, i) in self.graph.items(): 
+        for n, (a, _) in self.graph.items(): 
             setattr(self, n, a['type'](**a['params']))
 
     def forward(self, inputs):
@@ -61,13 +61,24 @@ class Shortcut(nn.Module):
         
 
 class Add(nn.Module):
-    def __init__(self,  inplace):
+    def __init__(self, inplace=True):
         super().__init__()
         self.inplace = inplace
     def forward(self, x, y): 
         if self.inplace: return x.add_(y)
         else: return x + y
-       
+
+
+class AddRelu(nn.Module):
+    def __init__(self, inplace=True):
+        super().__init__()
+        self.inplace=inplace
+    def forward(self, x, y): 
+        if self.inplace: 
+            return F.relu_(x.add_(y))
+        return F.relu(x.add(y))
+    
+    
 class GlobalAvgPool2d(nn.Module):
     def forward(self, x): return F.adaptive_avg_pool2d(x, (1,1)).view(x.size(0), x.size(1))
     
@@ -133,71 +144,7 @@ relu      = node(nn.ReLU)
 relu6     = node(nn.ReLU6)
 x_entropy = node(nn.CrossEntropyLoss)
 add       = node(Add)
+add_relu = node(AddRelu)
 constant = node(Constant)
 activation_func = node(ActivationFunc)
 
-##############
-## Rules
-##############
-
-ConvBN = namedtuple('ConvBN', ['in_channels', 'out_channels', 'kernel_size', 'stride', 
-            'padding', 'groups', 'activation', 'eps'])
-conv_bn = node(ConvBN, stride=1, padding=0, groups=1, activation=None, eps=1e-5)
-
-@bind_vars
-def expand_conv_bns(name, in_channels, out_channels, kernel_size, stride, padding, groups, activation, eps, _in):
-    LHS = {name: (conv_bn(in_channels, out_channels, kernel_size, stride, padding, groups, activation, eps), [_in])}
-    RHS = pipeline([
-        ('conv', conv(in_channels, out_channels, kernel_size, stride=stride, padding=padding, groups=groups,
-                    bias=False), [_in]),
-        ('bn', bn(out_channels, eps=eps)),
-        ('act', activation_func(activation_func=activation)),
-    ], prefix=name)
-    return LHS, RHS, (name, path(name, 'act'))
-
-
-zero_pad = node(nn.ZeroPad2d)
-@bind_vars
-def match_tf_padding(name, in_channels, out_channels, kernel_size, groups, _in):
-    LHS = {path(name, 'conv'): (conv(in_channels, out_channels, kernel_size, stride=2, padding=1, 
-                groups=groups, bias=False), [_in])}
-    RHS = pipeline([
-        ('zero_pad', zero_pad((0,1,0,1)), [_in]),
-        ('conv', conv(in_channels, out_channels, kernel_size, stride=2, padding=0, groups=groups, bias=False))
-    ], prefix=name)
-    return LHS, RHS
-
-"""
-_in, _out, _0, _1, _2, _3 = var('in'), var('out'), *map(var, range(4))
-
-@bind_vars
-def expand_conv(conv_name, in_channels, out_channels, kernel_h, kernel_w, stride, padding):
-    LHS = {_out: conv(conv_name, in_channels, out_channels, (kernel_h, kernel_w), stride, padding, False, [_in])}
-    RHS = {
-        _0: constant((conv_name, 'weight'), [None, (out_channels, in_channels, kernel_h, kernel_w)], []),
-        _out: conv_op((conv_name, 'out'), [stride, padding], [_in, _0])
-    }
-    return LHS, RHS
-
-@bind_vars
-def expand_linear(linear_name, in_features, out_features):
-    LHS = {_out: linear(linear_name, [in_features, out_features], [_in])}
-    RHS = {
-        _0: constant((linear_name, 'weight'), [None, (out_features, in_features)], []),
-        _1: constant((linear_name, 'bias'), [None, (out_features,)], []),
-        _out: linear_op((linear_name, 'out'), [], [_in, _0, _1])
-    }
-    return LHS, RHS
-
-@bind_vars
-def expand_bn(bn_name, num_features):
-    LHS = {_out: bn(bn_name, [num_features], [_in])}
-    RHS = {
-        _0: constant((bn_name, 'running_mean'), [None, (num_features,)], []),
-        _1: constant((bn_name, 'running_var'), [None, (num_features,)], []),
-        _2: constant((bn_name, 'weight'), [None, (num_features,)], []),
-        _3: constant((bn_name, 'bias'), [None, (num_features,)], []),
-        _out: bn_op((bn_name, 'out'), [False], [_in, _0, _1, _2, _3])
-    }
-    return LHS, RHS
-"""
