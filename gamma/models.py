@@ -123,7 +123,6 @@ def cifar_resnet(name, num_classes=10):
          expand_conv_bns(), expand_preact_blocks(), replace_identity_shortcuts(), replace_shortcuts_conv(),
     ]
     return build_resnet(layer_params, layer_func, rules, num_classes)
-   
 
 #######################
 ### Rewrite rules
@@ -144,9 +143,9 @@ def resnet_classifier(in_channels, out_channels, _in):
     LHS = {'classifier': (classifier(in_channels, out_channels), [_in])}
     RHS = pipeline([
             ('avgpool', global_avg_pool(), [_in]),
-            ('fc', linear(in_channels, out_channels)),
+            ('classifier', linear(in_channels, out_channels)),
     ])
-    return LHS, RHS, ('classifier', 'fc')
+    return LHS, RHS
 
 
 @bind_vars
@@ -235,7 +234,7 @@ def cifar_resnet_classifier(in_channels, out_channels, _in):
     LHS = {'classifier': (classifier(in_channels, out_channels), [_in])}
     RHS = pipeline([
             ('pool', pool(), [_in]),
-            ('fc', linear(in_channels*2, out_channels)),
+            ('classifier', linear(in_channels*2, out_channels)),
     ])
-    return LHS, RHS, ('classifier', 'fc')
+    return LHS, RHS
 
