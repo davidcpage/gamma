@@ -85,7 +85,7 @@ def _unify_inplace(u, v, s): #i.e. the bindings dict `s` gets updated in place
     if isinstance(v, var): s[v] = u; return
     if isinstance(u, Times) and isinstance(v, int):
         u_var, n = u
-        return _unify_inplace(u_var, v*n, s)
+        if v % n is 0: return _unify_inplace(u_var, v//n, s)
     if isinstance(u, Path) and isinstance(v, str):
         x, y = u
         if isinstance(x, str) and v.startswith(x +'/'):
