@@ -59,7 +59,7 @@ def draw(graphs, legend=True, scale=1, sep='/', **kwargs):
         graphs = (graphs,)
     html, types, = '', []
     for graph in graphs:
-        if not isinstance(graph, dict): continue
+        if not (isinstance(graph, dict) and len(graph)): continue
         type_name = lambda t: getattr(t, '__name__', t) 
         graph = {n: ({'type': type_name(get_type(a)), 'params': get_params(a)}, i) for (n, (a, i)) in graph.items()}
         height = max(depths(graph).values())

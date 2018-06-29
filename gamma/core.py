@@ -48,7 +48,7 @@ def reify(x, s):
         return path(reify(x.x, s), reify(x.y, s))
     elif isinstance(x, Times):
         return reify(x.var, s)*x.n
-    elif isinstance(x, (tuple, list)):
+    elif isinstance(x, (tuple, list, set)):
         return type(x)(reify(xx, s) for xx in x)
     elif isinstance(x, dict):
         return {reify(k, s): reify(v, s) for k, v in x.items()}
@@ -390,22 +390,34 @@ def reverse(rule):
     rule =  RHS, LHS, *((y, x) for (x, y) in redirects)
     return rule
 
+   
+
+def apply_rules(graph, rules): 
+    return functools.reduce(apply_rule, rules, graph)
+
+def _check_dangling_edges(graph, matched_nodes, productions, redirects):
+    out_edges = gather((src, dst) for dst, (_, i) in graph.items() for src in i)
+    public = [{n for n,_ in redirect} for redirect in redirects]
+    external_nodes = [{src for src in match if len([dst for dst in out_edges.get(src, []) if dst not in match]) > 0 } for
+                         match in matched_nodes]
+    return [all(src in pub or src in prod for src in ext) 
+            for (ext, pub, prod) in zip(external_nodes, public, productions)]
+
+def keep_if(it, mask):
+    return (x for (x, b) in zip(it, mask) if b)
 
 def apply_rule(graph, rule):
     LHS, RHS, *redirects = rule
     LHS = reify(LHS, {}) #replace Wildcards with var(Wildcard()); do it here so that we know which keys to remove below
     matches = _search(LHS, graph)
     # remove matched nodes except for inputs
-    matched_nodes = {n for match in matches for n in reify(list(LHS.keys()), match)}
-    ids = gen_ids(reserved=external_inputs(graph).union(graph))
-   
-    redirects = dict(r for match in matches for r in reify(redirects, match))
-    productions = [reify(RHS, match) for match in matches]
-    productions = [{k: (a, [(x if x in p else walk(x, redirects)) for x in i]) for (k, (a, i)) in p.items()} for p in productions]
+    matched_nodes, productions, redirects = [
+        [reify(x, match) for match in matches] for x in (set(LHS.keys()), RHS,  redirects)]
+    ok = _check_dangling_edges(graph, matched_nodes, productions, redirects)
+
+    matched_nodes = {n for match in keep_if(matched_nodes, ok) for n in match}
+    redirects = dict(r for rs in keep_if(redirects, ok) for r in rs)
+    productions = [{k: (a, [(x if x in p else walk(x, redirects)) for x in i]) for (k, (a, i)) in p.items()} for 
+                        p in keep_if(productions, ok)]
     graph = {k: (a, [walk(x, redirects) for x in i]) for (k, (a, i)) in graph.items() if k not in matched_nodes}
     return union(graph, *productions)
-    
-
-def apply_rules(graph, rules): 
-    return functools.reduce(apply_rule, rules, graph)
-  
