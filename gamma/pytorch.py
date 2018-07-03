@@ -97,6 +97,8 @@ class BatchNormOp(nn.Module):
         self.training = training
     def forward(self, x, running_mean, running_var, weight, bias): return F.batch_norm( x, running_mean, running_var, weight, bias, training=self.training)
 
+
+
 class ConcatPool2d(nn.Module):
     def forward(self, x):
         # pylint: disable=E1101
@@ -120,31 +122,32 @@ class NodeDef(namedtuple('NodeDef', ['type', 'params'])):
         params.apply_defaults()
         return {'type': self.type, 'params': dict(params.arguments)}
 
+def node(type_name, arg_names, **defaults):
+    return node_def(namedtuple(type_name, arg_names), **defaults)
 
-def node(type, **defaults): 
+def node_def(type, **defaults): 
     sig = signature(type)
     if defaults:
         params = [(param.replace(default=defaults[name]) if name in defaults else param) for name, param in sig.parameters.items()]
         sig = sig.replace(parameters=params)
     return NodeDef(type, sig)
 
-identity  = node(Identity)  
-pool      = node(ConcatPool2d)
-linear    = node(nn.Linear)
-bn        = node(nn.BatchNorm2d)
-conv      = node(nn.Conv2d)
-conv_op   = node(ConvOp)
-bn_op     = node(BatchNormOp)
-linear_op = node(LinearOp)
-max_pool  = node(nn.MaxPool2d)
-dropout   = node(nn.Dropout)
-shortcut  = node(Shortcut)
-global_avg_pool = node(GlobalAvgPool2d)
-relu      = node(nn.ReLU)
-relu6     = node(nn.ReLU6)
-x_entropy = node(nn.CrossEntropyLoss)
-add       = node(Add)
-add_relu = node(AddRelu)
-constant = node(Constant)
-activation_func = node(ActivationFunc)
-
+identity  = node_def(Identity)  
+pool      = node_def(ConcatPool2d)
+linear    = node_def(nn.Linear)
+bn        = node_def(nn.BatchNorm2d)
+conv      = node_def(nn.Conv2d)
+conv_op   = node_def(ConvOp)
+bn_op     = node_def(BatchNormOp)
+linear_op = node_def(LinearOp)
+max_pool  = node_def(nn.MaxPool2d)
+dropout   = node_def(nn.Dropout)
+shortcut  = node_def(Shortcut)
+global_avg_pool = node_def(GlobalAvgPool2d)
+relu      = node_def(nn.ReLU)
+relu6     = node_def(nn.ReLU6)
+x_entropy = node_def(nn.CrossEntropyLoss)
+add       = node_def(Add)
+add_relu = node_def(AddRelu)
+constant = node_def(Constant)
+activation_func = node_def(ActivationFunc)

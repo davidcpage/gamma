@@ -5,14 +5,14 @@ from gamma.pytorch import *
 ### Node types
 ################
 
-prep = node(namedtuple('Prep', ('out_channels')))
-classifier = node(namedtuple('Classifier', ('in_channels', 'out_channels')))
-residual_block = node(namedtuple('ResidualBlock', ['in_channels', 'out_channels', 'stride', 
-    'h_channels', 'groups', 'act', 'join']))
-block = node(namedtuple('Block', ['in_channels', 'out_channels', 'stride', 'h_channels', 'groups', 'act']))
-preact_block = node(namedtuple('PreActBlock', ['in_channels', 'out_channels', 'stride']))
-conv_bn = node(namedtuple('ConvBN', ['in_channels', 'out_channels', 'kernel_size', 'stride', 
-            'padding', 'groups', 'activation', 'eps']), stride=1, padding=0, groups=1, activation=F.relu, eps=1e-5)
+prep = node('Prep', ('out_channels'))
+classifier = node('Classifier', ('in_channels', 'out_channels'))
+residual_block = node('ResidualBlock', ['in_channels', 'out_channels', 'stride', 
+    'h_channels', 'groups', 'act', 'join'])
+block = node('Block', ['in_channels', 'out_channels', 'stride', 'h_channels', 'groups', 'act'])
+preact_block = node('PreActBlock', ['in_channels', 'out_channels', 'stride'])
+conv_bn = node('ConvBN', ['in_channels', 'out_channels', 'kernel_size', 'stride', 
+            'padding', 'groups', 'activation', 'eps'], stride=1, padding=0, groups=1, activation=F.relu, eps=1e-5)
  
 ######################
 ### Network defns
