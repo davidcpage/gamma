@@ -79,38 +79,6 @@ class Forward(Reducer):
         output = state['model']({'input': inputs[0].to(device), 'target': inputs[1].to(device)})
         return state, False
 
-def is_correct(outputs): return to_numpy(outputs['classifier']).argmax(
-    axis=1) == to_numpy(outputs['target'])
-
-class LogStats(Transducer):
-    def initialize(self, state):
-        if 'stats' not in state: state['stats'] = []
-        state['stats'].append(
-            {'correct': 0, 'total_loss': 0, 'start_time': time.time()}
-        )
-        return self.reducer.initialize(state)
-
-    def step(self, state, inputs):
-        state, reduced = self.reducer.step(state, inputs)
-        if reduced: return state, reduced
-        outputs = state['model'].cache
-        n = outputs['target'].shape[0]
-        stats = state['stats'][-1]
-        stats['total_loss'] += to_numpy(outputs['loss'])*n
-        stats['correct'] += is_correct(outputs).sum()
-        return state, reduced
-
-    def finalize(self, state):
-        stats = state['stats'][-1]
-        stats['end_time'] = time.time()
-        stats.update({
-            'time': stats['end_time']-stats['start_time'],
-            'acc': stats['correct']/state['processed'],
-            'loss': stats['total_loss']/state['processed'],
-
-        })
-        return self.reducer.finalize(state)
-
 
 class Memo(Transducer):
   def __init__(self, paths):
@@ -205,44 +173,3 @@ class EarlyStop(Transducer):
         return state, reduced
 
     
-class EpochRunner(Reducer):  
-    def print_format(self, *vals):
-        #pylint: disable=E1101
-        formats = {str: '{:10}', int: '{:10d}',
-                   np.float64: '{:10.4f}', float: '{:10.4f}'}
-        #pylint: enable=E1101
-        self.log(' '.join(formats[type(v)].format(v) for v in vals))
-
-    def __init__(self, train_step, test_step, log=print):
-        self.train_step = train_step
-        self.test_step = test_step
-        self.log = log
-    
-    def initialize(self, state):
-        self.log(f'Starting training at '+time.strftime('%Y-%m-%d %H:%M:%S'))
-        state['training_start_time'] = time.time()
-        self.print_format('epoch', 'lr', 'trn_time', 'trn_loss',
-                          'trn_acc', 'val_time', 'val_loss', 'val_acc', 'total_time')
-        if 'epoch' not in state: state['epoch'] = 0
-        return state
-
-    def step(self, state, item):
-        train, test = item
-        
-        state['epoch_length'] = len(train)
-        state = reduce(self.train_step, train, state)
-        
-        state['epoch_length'] = len(test)
-        state = reduce(self.test_step, test, state)
-        
-        state['epoch'] += 1
-        total_time = time.time() - state['training_start_time']
-        stats = [state['epoch'], state['optimizer']['lr']] + [state['stats'][i][k]
-                                                              for i in [-2, -1] for k in ['time', 'loss', 'acc']] + [total_time]
-        self.print_format(*stats)
-        return state, False
-
-    def finalize(self, state):
-        self.log(f'Finished training at '+time.strftime('%Y-%m-%d %H:%M:%S'))
-        return state
-
