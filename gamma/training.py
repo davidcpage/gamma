@@ -92,6 +92,7 @@ class LogStats(Transducer):
 
     def step(self, state, inputs):
         state, reduced = self.reducer.step(state, inputs)
+        if reduced: return state, reduced
         outputs = state['model'].cache
         n = outputs['target'].shape[0]
         stats = state['stats'][-1]
@@ -152,6 +153,7 @@ class Nesterov(Transducer):
 
     def step(self, state, inputs):
         state, reduced = self.reducer.step(state, inputs)
+        if reduced: return state, reduced
         opt_params = state['optimizer']
         v, momentum, lr, weight_decay = [opt_params[k] for k in ['v', 'momentum', 'lr', 'weight_decay']]
         for name, param in state['model'].named_parameters():
@@ -163,11 +165,11 @@ class Nesterov(Transducer):
             p.add_(-lr, g)
         return state, reduced
 
+
 class piecewise_linear(namedtuple('piecewise_linear', ('knots', 'vals'))):
-    def __call__(self, x): 
-        return np.interp([x], self.knots, self.vals)[0]
-
-
+    def __call__(self, t): 
+        return np.interp([t], self.knots, self.vals)[0]
+ 
 def plot_lr_schedule(lr_schedule, epochs, ax):
     return ax.plot(*zip(*[(x, lr_schedule(x)) for x in np.arange(0, epochs, 0.1)]))
 
@@ -202,6 +204,7 @@ class EarlyStop(Transducer):
         reduced = reduced or (self.counter == self.num_batches)
         return state, reduced
 
+    
 class EpochRunner(Reducer):  
     def print_format(self, *vals):
         #pylint: disable=E1101
@@ -210,19 +213,16 @@ class EpochRunner(Reducer):
         #pylint: enable=E1101
         self.log(' '.join(formats[type(v)].format(v) for v in vals))
 
-    def __init__(self, train_step, test_step, log_file=None):
+    def __init__(self, train_step, test_step, log=print):
         self.train_step = train_step
         self.test_step = test_step
-        self.log_file = log_file
+        self.log = log
     
-    def log(self, s):
-        print(s)
-        if self.log_file: self.log_file.write(s)
-
     def initialize(self, state):
         self.log(f'Starting training at '+time.strftime('%Y-%m-%d %H:%M:%S'))
+        state['training_start_time'] = time.time()
         self.print_format('epoch', 'lr', 'trn_time', 'trn_loss',
-                          'trn_acc', 'val_time', 'val_loss', 'val_acc')
+                          'trn_acc', 'val_time', 'val_loss', 'val_acc', 'total_time')
         if 'epoch' not in state: state['epoch'] = 0
         return state
 
@@ -236,11 +236,13 @@ class EpochRunner(Reducer):
         state = reduce(self.test_step, test, state)
         
         state['epoch'] += 1
+        total_time = time.time() - state['training_start_time']
         stats = [state['epoch'], state['optimizer']['lr']] + [state['stats'][i][k]
-                                                              for i in [-2, -1] for k in ['time', 'loss', 'acc']]
+                                                              for i in [-2, -1] for k in ['time', 'loss', 'acc']] + [total_time]
         self.print_format(*stats)
         return state, False
 
     def finalize(self, state):
         self.log(f'Finished training at '+time.strftime('%Y-%m-%d %H:%M:%S'))
         return state
+
