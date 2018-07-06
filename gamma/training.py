@@ -1,5 +1,5 @@
 import functools
-import time
+import math
 from collections import namedtuple
 import torch
 import numpy as np
@@ -107,16 +107,16 @@ class Backward(Transducer):
         state['model'].cache['loss'].backward()
         return state, reduced
 
+def zero_param(model):
+    #pylint: disable=E1101
+    return {k: torch.zeros_like(v) for k,v in model.named_parameters() if v.requires_grad}
+    #pylint: enable=E1101
 
 class Nesterov(Transducer):
     def initialize(self, state):
         state = self.reducer.initialize(state)
-        opt_params = state['optimizer']
-        if 'v' not in opt_params:
-            #pylint: disable=E1101
-            opt_params['v'] = {k: torch.zeros_like(
-                v) for k, v in state['model'].named_parameters() if v.requires_grad}
-            #pylint: enable=E1101
+        params = state['optimizer']
+        if 'v' not in params: params['v'] = zero_param(state['model'])
         return state
 
     def step(self, state, inputs):
@@ -133,6 +133,39 @@ class Nesterov(Transducer):
             p.add_(-lr, g)
         return state, reduced
 
+class Adam(Transducer):
+    def __init__(self, AdamW = False):
+        self.AdamW = AdamW
+
+    def initialize(self, state):
+        state = self.reducer.initialize(state)
+        params = state['optimizer']
+        if 'N_step' not in params: 
+            params['N_step'] = 0
+            params['avg_grad'] = zero_param(state['model'])
+            params['avg_grad_sq'] = zero_param(state['model'])
+        return state
+
+    def step(self, state, inputs):
+        state, reduced = self.reducer.step(state, inputs)
+        if reduced: return state, reduced
+        opt_params = state['optimizer']
+        opt_params['N_step'] += 1
+        N_step, avg_grad, avg_grad_sq, beta1, beta2, weight_decay, eps, lr = [opt_params[k] for k in ['N_step', 
+            'avg_grad', 'avg_grad_sq', 'beta1', 'beta2', 'weight_decay', 'eps', 'lr']]
+        step_size = lr * math.sqrt(1 - beta2 ** N_step) / (1 - beta1 ** N_step)     
+        scale=256 #loss scaling.. it all cancels out anyhow but g * g seems to produce fp16 underflow.
+        eps = eps*scale
+        for k, param in state['model'].named_parameters():
+            p, g = param.data, param.grad.data
+            if weight_decay != 0 and not self.AdamW: g.add_(weight_decay, p)
+            g = g*scale                
+            avg_grad[k].mul_(beta1).add_(1 - beta1, g)
+            avg_grad_sq[k].mul_(beta2).addcmul_(1 - beta2, g, g)
+            denom = avg_grad_sq[k].sqrt().add_(eps)
+            if self.AdamW: p.add_(-lr*weight_decay, p)
+            p.addcdiv_(-step_size, avg_grad[k], denom)
+        return state, reduced
 
 class piecewise_linear(namedtuple('piecewise_linear', ('knots', 'vals'))):
     def __call__(self, t): 
