@@ -133,7 +133,7 @@ def to_nd(x, ctx):
         x = to_numpy(x)
     return mxnet.nd.array(x, ctx=ctx)
 
-def load_state_(model, state_dict, ctx):
+def load_state(model, state_dict, ctx):
     for k, p in model.collect_params().items():
-        p._load_init(to_nd(state_dict[k]), ctx=ctx)
+        p._load_init(to_nd(state_dict[k], ctx), ctx=ctx)
     return model
