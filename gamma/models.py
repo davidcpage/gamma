@@ -238,3 +238,24 @@ def cifar_resnet_classifier(in_channels, out_channels, _in):
     ])
     return LHS, RHS
 
+#######################
+### Load weights
+#######################
+
+def load_resnet_weights(depth):
+    import torchvision
+    import torch.utils.model_zoo as model_zoo
+    
+    model_name = f'resnet{depth}'
+    state_dict = model_zoo.load_url(torchvision.models.resnet.model_urls[model_name])
+    name_rules = [
+        ('conv1.{}', 'prep/conv/{}'),
+        ('bn1.{}',   'prep/bn/{}'),
+        ('layer{}.{}.downsample.0.{}', 'layer_{}/block_{}/downsample/conv/{}'),
+        ('layer{}.{}.downsample.1.{}', 'layer_{}/block_{}/downsample/bn/{}'),
+        ('layer{}.{j}.conv{k}.{}', 'layer_{}/block_{j}/conv_{k}/conv/{}'),
+        ('layer{}.{j}.bn{k}.{}', 'layer_{}/block_{j}/conv_{k}/bn/{}'),
+        ('fc.{}', 'classifier/{}')
+    ] 
+
+    return rename(state_dict, name_rules)
