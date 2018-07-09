@@ -9,33 +9,59 @@ class m_AddRelu(gluon.Block):
     def forward(self, x, y):
         return mxnet.nd.relu(x+y)
     
+class MaxPool(gluon.Block):
+    def __init__(self, pool_size=(2, 2), strides=None, padding=0, layout='NCHW',
+                 ceil_mode=False, **kwargs):
+        super(MaxPool, self).__init__(**kwargs)
+        self.op = gluon.nn.MaxPool2D(pool_size, strides, padding, layout='NCHW', 
+                                                ceil_mode = ceil_mode, **kwargs)
+        self.layout = layout
+        
+    def forward(self, x):
+        if self.layout == 'NHWC':
+            return self.op(x.transpose([0,3,1,2])).transpose([0,2,3,1])
+        return self.op(x)
+
+class GlobalAvgPool(gluon.Block):
+    def __init__(self, layout='NCHW', **kwargs):
+        super(GlobalAvgPool, self).__init__(**kwargs)
+        self.op = gluon.nn.GlobalAvgPool2D(layout='NCHW', **kwargs)
+        self.layout = layout
+    
+    def forward(self, x):
+        if self.layout == 'NHWC':
+            return self.op(x.transpose([0,3,1,2]))
+        return self.op(x) 
+
+
 m_add_relu = node_def(m_AddRelu)
 m_conv = node_def(gluon.nn.Conv2D)
 m_x_entropy = node_def(gluon.loss.SoftmaxCrossEntropyLoss)
-m_global_avg_pool = node_def(gluon.nn.GlobalAvgPool2D)
-m_max_pool=node_def(gluon.nn.MaxPool2D)
+m_global_avg_pool = node_def(GlobalAvgPool)
+m_max_pool=node_def(MaxPool)
 m_linear = node_def(gluon.nn.Dense)
 m_activation_func = node_def(gluon.nn.Activation)
 m_bn = node_def(gluon.nn.BatchNorm)
 
 
 @bind_vars
-def mxnet_conv(name, in_channels, out_channels, kernel_size, stride, padding, dilation, groups, bias, _in):
+def mxnet_conv(name, in_channels, out_channels, kernel_size, stride, padding, dilation, groups, bias, layout, _in):
     LHS = {name: (conv(in_channels, out_channels, kernel_size, stride, padding, dilation, groups, bias), [_in])}
-    RHS = {name: (m_conv(out_channels, kernel_size, stride, padding, dilation, groups, use_bias=bias, in_channels=in_channels), [_in])}
+    RHS = {name: (m_conv(out_channels, kernel_size, stride, padding, dilation, groups, use_bias=bias, layout=layout,  in_channels=in_channels), [_in])}
     return LHS, RHS
 
 @bind_vars
-def mxnet_max_pool(name, kernel_size, stride, padding, _in):
+def mxnet_max_pool(name, kernel_size, stride, padding, layout, _in):
     LHS = {name: (max_pool(kernel_size, stride, padding), [_in])}
-    RHS = {name: (m_max_pool(kernel_size, stride, padding), [_in])}
+    RHS = {name: (m_max_pool(kernel_size, stride, padding, layout=layout), [_in])}
     return LHS, RHS
 
 
+
 @bind_vars
-def mxnet_global_avg_pool(name, _in):
+def mxnet_global_avg_pool(name, layout, _in):
     LHS = {name: (global_avg_pool(), [_in])}
-    RHS = {name: (m_global_avg_pool(), [_in])}
+    RHS = {name: (m_global_avg_pool(layout=layout), [_in])}
     return LHS, RHS
 
 @bind_vars
@@ -50,10 +76,11 @@ def mxnet_add_relu(name, _in1, _in2):
     RHS = {name: (m_add_relu(), [_in1, _in2])}
     return LHS, RHS
 
+
 @bind_vars
-def mxnet_bn(name, in_channels, eps, affine, _in):
+def mxnet_bn(name, in_channels, eps, affine, axis, _in):
     LHS = {name: (bn(in_channels, eps, affine=affine), [_in])}
-    RHS = {name: (m_bn(epsilon=eps, center=affine, scale=affine, in_channels=in_channels), [_in])} 
+    RHS = {name: (m_bn(epsilon=eps, center=affine, scale=affine, in_channels=in_channels, axis=axis), [_in])} 
     return LHS, RHS
 
 @bind_vars
@@ -69,13 +96,14 @@ def mxnet_x_entropy(name, logits, target):
     RHS = {name: (m_x_entropy(), [logits, target])}
     return LHS, RHS
 
-rules = [
-    mxnet_conv(), 
-    mxnet_max_pool(), 
-    mxnet_global_avg_pool(), 
+def rules(layout='NCHW'):
+    return [
+    mxnet_conv(layout=layout), 
+    mxnet_max_pool(layout=layout), 
+    mxnet_global_avg_pool(layout=layout), 
     mxnet_linear(), 
     mxnet_add_relu(), 
-    mxnet_bn(), 
+    mxnet_bn(axis=layout.index('C')), 
     mxnet_activation_func(act_func=F.relu, act_func_name='relu'), 
     mxnet_x_entropy()
 ]
@@ -98,14 +126,14 @@ class MxnetGraph(gluon.Block):
             self.cache[n] = getattr(self, n)(*[self.cache[x] for x in i])
         return self.cache
 
-def to_nd(x):
+def to_nd(x, ctx):
     if isinstance(x, dict):
-        return {k: to_nd(v) for k, v in x.items()}
+        return {k: to_nd(v, ctx) for k, v in x.items()}
     if isinstance(x, torch.Tensor):
         x = to_numpy(x)
-    return mxnet.nd.array(x)
+    return mxnet.nd.array(x, ctx=ctx)
 
-def load_state(model, state_dict):
+def load_state_(model, state_dict, ctx):
     for k, p in model.collect_params().items():
-        p._load_init(to_nd(state_dict[k]), ctx=mxnet.cpu(0))
+        p._load_init(to_nd(state_dict[k]), ctx=ctx)
     return model

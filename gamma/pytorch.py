@@ -5,6 +5,9 @@ from collections import namedtuple
 from inspect import signature
 from gamma.core import *
 
+class transpose(namedtuple('transpose', ('source', 'target'))):
+    def __call__(self, data): return data.transpose([self.source.index(x) for x in self.target])
+    
 class TorchGraph(nn.Module):
     def __init__(self, graph):
         super().__init__()
