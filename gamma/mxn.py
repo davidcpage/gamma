@@ -133,7 +133,7 @@ def mxnet_add(name, x, y):
 @bind_vars
 def mxnet_relu(name, _in):
     LHS = {name: (relu(True), [_in])}
-    RHS = {name: (mxn.m_activation_func('relu'), [_in])}
+    RHS = {name: (m_activation_func('relu'), [_in])}
     return LHS, RHS
 
 @bind_vars
@@ -186,3 +186,5 @@ def load_state(model, state_dict, ctx):
     for k, p in model.collect_params().items():
         p._load_init(to_nd(state_dict[k], ctx), ctx=ctx)
     return model
+
+
