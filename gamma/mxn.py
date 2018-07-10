@@ -33,7 +33,34 @@ class GlobalAvgPool(gluon.Block):
             return self.op(x.transpose([0,3,1,2]))
         return self.op(x) 
 
+class m_Add(gluon.Block):
+    def __init__(self, inplace=True, **kwargs):
+        super().__init__(**kwargs)
+        self.inplace=inplace
+    def forward(self, x, y):
+        if self.inplace: return mxnet.nd.elemwise_add(x, y, out=x)
+        else: return x + y
 
+class m_ConcatPool(gluon.Block):
+    def __init__(self, layout='NCHW', **kwargs):
+        super().__init__(**kwargs)
+        self.layout=layout
+        self.avg_pool = gluon.nn.GlobalAvgPool2D()
+        self.max_pool = gluon.nn.GlobalMaxPool2D()
+        self.flatten = gluon.nn.Flatten()
+        
+    def forward(self, x):
+        if self.layout == 'NHWC':
+            x = x.transpose([0,3,1,2])         
+        return mxnet.ndarray.concat(
+            self.flatten(self.avg_pool(x)),
+            self.flatten(self.max_pool(x)),            
+            dim=1
+        )
+    
+
+m_add = node_def(m_Add)
+m_concat_pool = node_def(m_ConcatPool)
 m_add_relu = node_def(m_AddRelu)
 m_conv = node_def(gluon.nn.Conv2D)
 m_x_entropy = node_def(gluon.loss.SoftmaxCrossEntropyLoss)
@@ -91,6 +118,25 @@ def mxnet_activation_func(act_func, act_func_name, name, _in):
 
 
 @bind_vars
+def mxnet_concat_pool(name, layout, _in):
+    LHS = {name: (pool(), [_in])}
+    RHS = {name: (m_concat_pool(layout=layout), [_in])}
+    return LHS, RHS
+
+@bind_vars
+def mxnet_add(name, x, y):
+    LHS = {name: (add(), [x, y])}
+    RHS = {name: (m_add(), [x, y])}
+    return LHS, RHS    
+        
+        
+@bind_vars
+def mxnet_relu(name, _in):
+    LHS = {name: (relu(True), [_in])}
+    RHS = {name: (mxn.m_activation_func('relu'), [_in])}
+    return LHS, RHS
+
+@bind_vars
 def mxnet_x_entropy(name, logits, target):
     LHS = {name: (x_entropy(), [logits, target])}
     RHS = {name: (m_x_entropy(), [logits, target])}
@@ -105,7 +151,10 @@ def rules(layout='NCHW'):
     mxnet_add_relu(), 
     mxnet_bn(axis=layout.index('C')), 
     mxnet_activation_func(act_func=F.relu, act_func_name='relu'), 
-    mxnet_x_entropy()
+    mxnet_x_entropy(),
+    mxnet_concat_pool(layout=layout), 
+    mxnet_add(), 
+    mxnet_relu()
 ]
 
 class MxnetGraph(gluon.Block):
