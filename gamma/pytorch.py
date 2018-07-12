@@ -14,7 +14,6 @@ def _(x):
     return x.detach().cpu().numpy()  
 
 
-
 class TorchGraph(nn.Module):
     def __init__(self, graph):
         super().__init__()
@@ -30,7 +29,7 @@ class TorchGraph(nn.Module):
         return self.cache
 
     def params_and_grads(self):
-        return ((name, param.data, param.grad.data) for (name, param) in self.named_parameters().items())
+        return ((name, param.data, param.grad.data) for (name, param) in self.named_parameters())
 
     def param_value(self, node, param_name):
         return to_numpy(getattr(getattr(self, node), param_name))

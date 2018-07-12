@@ -33,12 +33,8 @@ class GlobalAvgPool(gluon.Block):
         return self.op(x) 
 
 class m_Add(gluon.Block):
-    def __init__(self, inplace=True, **kwargs):
-        super().__init__(**kwargs)
-        self.inplace=inplace
     def forward(self, x, y):
-        if self.inplace: return nd.elemwise_add(x, y, out=x)
-        else: return x + y
+        return x + y
 
 class m_ConcatPool(gluon.Block):
     def __init__(self, layout='NCHW', **kwargs):
