@@ -29,7 +29,8 @@ class TorchGraph(nn.Module):
         return self.cache
 
     def params_and_grads(self):
-        return ((name, param.data, param.grad.data) for (name, param) in self.named_parameters())
+        return ((name, param.data, param.grad.data if param.grad else None) for 
+                (name, param) in self.named_parameters() if param.requires_grad)
 
     def param_value(self, node, param_name):
         return to_numpy(getattr(getattr(self, node), param_name))
@@ -148,6 +149,7 @@ def node_def(type, **defaults):
         params = [(param.replace(default=defaults[name]) if name in defaults else param) for name, param in sig.parameters.items()]
         sig = sig.replace(parameters=params)
     return NodeDef(type, sig)
+
 
 identity  = node_def(Identity)  
 pool      = node_def(ConcatPool2d)
