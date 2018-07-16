@@ -1,13 +1,11 @@
 import numpy as np
 import mxnet
-from mxnet import gluon
-
-from gamma.pytorch import *
-
+from mxnet import gluon, nd
+from gamma.torch import *
 
 class m_AddRelu(gluon.Block):
     def forward(self, x, y):
-        return mxnet.nd.relu(x+y)
+        return nd.relu(x+y)
     
 class MaxPool(gluon.Block):
     def __init__(self, pool_size=(2, 2), strides=None, padding=0, layout='NCHW',
@@ -34,12 +32,8 @@ class GlobalAvgPool(gluon.Block):
         return self.op(x) 
 
 class m_Add(gluon.Block):
-    def __init__(self, inplace=True, **kwargs):
-        super().__init__(**kwargs)
-        self.inplace=inplace
     def forward(self, x, y):
-        if self.inplace: return mxnet.nd.elemwise_add(x, y, out=x)
-        else: return x + y
+        return x + y
 
 class m_ConcatPool(gluon.Block):
     def __init__(self, layout='NCHW', **kwargs):
@@ -157,9 +151,33 @@ def rules(layout='NCHW'):
     mxnet_relu()
 ]
 
+@transfer.register(nd.NDArray)
+def _(data, device):
+    return data.as_in_context(device)
+
+@add_.register(nd.NDArray)
+def _(x , a, y):
+    if a is 0: return
+    if a is 1: x[:] += y
+    else: x[:] += a*y
+
+@mul_.register(nd.NDArray)
+def _(x, y):
+    x[:] *=y
+
+@zeros_like.register(nd.NDArray)
+def _(x):
+    return nd.zeros(x.shape, x.context, dtype=x.dtype)
+
+@to_numpy.register(nd.NDArray)
+def _(x): 
+    return x.asnumpy() 
+
+
 class MxnetGraph(gluon.Block):
     def __init__(self, graph):
         super().__init__()
+        self._train = False
         self.graph = dict(topological_sort(graph))
         for n, (a, _) in self.graph.items(): 
             if 'kwargs' in a['params']:
@@ -170,21 +188,30 @@ class MxnetGraph(gluon.Block):
 
     def forward(self, inputs):
         self.cache = dict(inputs)
-        for n, (a, i) in self.graph.items():
-            #print(n)
-            self.cache[n] = getattr(self, n)(*[self.cache[x] for x in i])
+        with mxnet.autograd.record(self._train):
+            for n, (a, i) in self.graph.items():
+                self.cache[n] = getattr(self, n)(*[self.cache[x] for x in i])
         return self.cache
+
+    def params_and_grads(self):
+        return ((name, param.data(), param.grad()) for 
+            (name, param) in self.collect_params().items() if param.grad_req != 'null')
+  
+    def train(self, mode):
+        self._train = mode
+
+    def zero_grad(self):
+        pass
+
 
 def to_nd(x, ctx):
     if isinstance(x, dict):
         return {k: to_nd(v, ctx) for k, v in x.items()}
     if isinstance(x, torch.Tensor):
         x = to_numpy(x)
-    return mxnet.nd.array(x, ctx=ctx)
+    return nd.array(x, ctx=ctx)
 
 def load_state(model, state_dict, ctx):
     for k, p in model.collect_params().items():
         p._load_init(to_nd(state_dict[k], ctx), ctx=ctx)
     return model
-
-

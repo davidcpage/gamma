@@ -4,10 +4,15 @@ from torch.nn import functional as F
 from collections import namedtuple
 from inspect import signature
 from gamma.core import *
+from gamma.training import Transducer, Optimizer, transfer, add_, mul_, zeros_like, to_numpy
 
 class transpose(namedtuple('transpose', ('source', 'target'))):
     def __call__(self, data): return data.transpose([self.source.index(x) for x in self.target])
-    
+
+@to_numpy.register(torch.Tensor)
+def _(x): 
+    return x.detach().cpu().numpy()  
+
 class TorchGraph(nn.Module):
     def __init__(self, graph):
         super().__init__()
@@ -21,6 +26,14 @@ class TorchGraph(nn.Module):
             #print(n)
             self.cache[n] = getattr(self, n)(*[self.cache[x] for x in i])
         return self.cache
+
+    def params_and_grads(self):
+        return ((name, param.data, None if param.grad is None else param.grad.data) for 
+                (name, param) in self.named_parameters() if param.requires_grad)
+
+    def param_value(self, node, param_name):
+        return to_numpy(getattr(getattr(self, node), param_name))
+ 
 
 def rename(state_dict, rules):
     import parse
@@ -39,7 +52,7 @@ def load_state(net, state_dict, sep='/'):
         setattr(mod, tail, val)    
 
 
-def to_numpy(x): return x.detach().cpu().numpy()    
+  
 
 class Identity(nn.Module):
     def forward(self, x): return x
@@ -135,6 +148,7 @@ def node_def(type, **defaults):
         sig = sig.replace(parameters=params)
     return NodeDef(type, sig)
 
+
 identity  = node_def(Identity)  
 pool      = node_def(ConcatPool2d)
 linear    = node_def(nn.Linear)
@@ -154,3 +168,51 @@ add       = node_def(Add)
 add_relu = node_def(AddRelu)
 constant = node_def(Constant)
 activation_func = node_def(ActivationFunc)
+
+
+################
+### Training
+################
+
+@transfer.register(torch.Tensor)
+def _(data, device):
+    return data.to(device)
+
+@add_.register(torch.Tensor)
+def _(x, a, y):
+    if a is 0: return
+    if a is 1: x.add_(y)
+    else: x.add_(a, y)
+
+@mul_.register(torch.Tensor)
+def _(x, y):
+    x.mul_(y)
+
+@zeros_like.register(torch.Tensor)
+def _(x):
+    return torch.zeros_like(x)
+
+
+
+
+
+class Adam(Optimizer):
+    def __init__(self, AdamW = False):
+        self.AdamW = AdamW
+
+    def init_state(self, opt_params, model):
+        if 'avg_grad' not in opt_params: 
+            opt_params['avg_grad'] = zero_param(model)
+            opt_params['avg_grad_sq'] = zero_param(model)
+
+    def update(self, p, g, N_step, avg_grad, avg_grad_sq, beta1, beta2, weight_decay, eps, lr):
+            scale=256 #loss scaling.. it all cancels out anyhow but g * g seems to produce fp16 underflow.
+            step_size = lr * math.sqrt(1 - beta2 ** N_step) / (1 - beta1 ** N_step)
+            if weight_decay != 0 and not self.AdamW: g.add_(weight_decay, p)
+            g = g*scale                
+            avg_grad.mul_(beta1).add_(1 - beta1, g)
+            avg_grad_sq.mul_(beta2).addcmul_(1 - beta2, g, g)
+            denom = avg_grad_sq.sqrt().add_(eps*scale)
+            if self.AdamW: p.add_(-lr*weight_decay, p)
+            p.addcdiv_(-step_size, avg_grad, denom)
+    
