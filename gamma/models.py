@@ -1,5 +1,5 @@
 from gamma.core import *
-from gamma.pytorch import *
+from gamma.torch import *
 
 ################
 ### Node types

@@ -13,7 +13,6 @@ class transpose(namedtuple('transpose', ('source', 'target'))):
 def _(x): 
     return x.detach().cpu().numpy()  
 
-
 class TorchGraph(nn.Module):
     def __init__(self, graph):
         super().__init__()
@@ -29,13 +28,12 @@ class TorchGraph(nn.Module):
         return self.cache
 
     def params_and_grads(self):
-        return ((name, param.data, param.grad.data if param.grad else None) for 
+        return ((name, param.data, None if param.grad is None else param.grad.data) for 
                 (name, param) in self.named_parameters() if param.requires_grad)
 
     def param_value(self, node, param_name):
         return to_numpy(getattr(getattr(self, node), param_name))
-
-    
+ 
 
 def rename(state_dict, rules):
     import parse

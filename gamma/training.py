@@ -61,10 +61,12 @@ def transfer(data, device):
 
 @functools.singledispatch
 def add_(x, a, y):
+    #x += a*y
     raise NotImplementedError
 
 @functools.singledispatch
 def mul_(x, y):
+    #x *= y
     raise NotImplementedError
 
 @functools.singledispatch

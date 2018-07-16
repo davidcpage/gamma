@@ -1,8 +1,7 @@
 import numpy as np
 import mxnet
 from mxnet import gluon, nd
-
-from gamma.pytorch import *
+from gamma.torch import *
 
 class m_AddRelu(gluon.Block):
     def forward(self, x, y):
