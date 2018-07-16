@@ -13,6 +13,15 @@ class transpose(namedtuple('transpose', ('source', 'target'))):
 def _(x): 
     return x.detach().cpu().numpy()  
 
+
+class TorchRecordingContext(object):
+    def __init__(self):
+        pass 
+    def __enter__(self):
+        pass
+    def __exit__(self, *args):
+        pass    
+
 class TorchGraph(nn.Module):
     def __init__(self, graph):
         super().__init__()
@@ -34,7 +43,15 @@ class TorchGraph(nn.Module):
     def param_value(self, node, param_name):
         return to_numpy(getattr(getattr(self, node), param_name))
  
+    def set_training(self, mode=True):
+        prev_training_state = self.training
+        if prev_training_state != mode:
+            self.train(mode)
+        return prev_training_state
 
+    def recording_context(self):
+        return TorchRecordingContext()
+ 
 def rename(state_dict, rules):
     import parse
     rules = [(parse.compile(LHS), RHS) for (LHS, RHS) in rules]

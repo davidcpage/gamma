@@ -92,19 +92,21 @@ class Forward(Reducer):
         self.training = training
     
     def initialize(self, state):
-        state['model'].train(self.training)
         state['processed'] = 0
         state['batches'] = 0
+        self.prev_training_mode = state['model'].set_training(self.training)
         return state
     
-    @staticmethod
-    def step(state, inputs):
+    def step(self, state, inputs):
         state['processed'] += len(inputs[0])
         state['batches'] += 1
         device = state['device']
         output = state['model']({'input': transfer(inputs[0], device), 'target': transfer(inputs[1], device)})
         return state, False
 
+    def finalize(self, state):
+        state['model'].set_training(self.prev_training_mode)
+        return state
 
 class Memo(Transducer):
   def __init__(self, paths):
@@ -124,15 +126,18 @@ class Memo(Transducer):
 class Backward(Transducer):
     def initialize(self, state):
         state = self.reducer.initialize(state)
-        state['model'].train(True)
         return state
 
     def step(self, state, inputs):
         state['model'].zero_grad()
-        state, reduced = self.reducer.step(state, inputs)
+        with state['model'].recording_context():
+            state, reduced = self.reducer.step(state, inputs)
         state['model'].cache['loss'].backward()
         return state, reduced
 
+    def finalize(self, state):
+        return self.reducer.finalize(state)
+        
 
 class Optimizer(Transducer):
     def init_state(self, opt_params, model):

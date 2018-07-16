@@ -177,7 +177,6 @@ def _(x):
 class MxnetGraph(gluon.Block):
     def __init__(self, graph):
         super().__init__()
-        self._train = False
         self.graph = dict(topological_sort(graph))
         for n, (a, _) in self.graph.items(): 
             if 'kwargs' in a['params']:
@@ -188,22 +187,23 @@ class MxnetGraph(gluon.Block):
 
     def forward(self, inputs):
         self.cache = dict(inputs)
-        with mxnet.autograd.record(self._train):
-            for n, (a, i) in self.graph.items():
-                self.cache[n] = getattr(self, n)(*[self.cache[x] for x in i])
+        for n, (a, i) in self.graph.items():
+            self.cache[n] = getattr(self, n)(*[self.cache[x] for x in i])
         return self.cache
 
     def params_and_grads(self):
         return ((name, param.data(), param.grad()) for 
             (name, param) in self.collect_params().items() if param.grad_req != 'null')
   
-    def train(self, mode):
-        self._train = mode
-
     def zero_grad(self):
         pass
 
+    def set_training(self, mode=True):
+        return mxnet.autograd.set_training(mode)
 
+    def recording_context(self):
+        return mxnet.autograd.record()
+ 
 def to_nd(x, ctx):
     if isinstance(x, dict):
         return {k: to_nd(v, ctx) for k, v in x.items()}
