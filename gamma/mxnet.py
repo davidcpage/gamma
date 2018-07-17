@@ -204,14 +204,14 @@ class MxnetGraph(gluon.Block):
     def recording_context(self):
         return mxnet.autograd.record()
  
-def to_nd(x, ctx):
+def to_nd(x, ctx=None):
     if isinstance(x, dict):
         return {k: to_nd(v, ctx) for k, v in x.items()}
     if isinstance(x, torch.Tensor):
         x = to_numpy(x)
-    return nd.array(x, ctx=ctx)
+    return nd.array(x, ctx=ctx, dtype=x.dtype)
 
 def load_state(model, state_dict, ctx):
     for k, p in model.collect_params().items():
-        p._load_init(to_nd(state_dict[k], ctx), ctx=ctx)
+        p._load_init(to_nd(state_dict[k]), ctx=ctx)
     return model
