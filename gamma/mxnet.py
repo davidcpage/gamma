@@ -52,6 +52,10 @@ class m_ConcatPool(gluon.Block):
             dim=1
         )
     
+class m_Correct(gluon.Block):
+    def forward(self, classifier, target):
+        return nd.argmax(classifier, axis=1).astype(np.int) == target
+    
 
 m_add = node_def(m_Add)
 m_concat_pool = node_def(m_ConcatPool)
@@ -63,6 +67,7 @@ m_max_pool=node_def(MaxPool)
 m_linear = node_def(gluon.nn.Dense)
 m_activation_func = node_def(gluon.nn.Activation)
 m_bn = node_def(gluon.nn.BatchNorm)
+m_correct = node_def(m_Correct)
 
 
 @bind_vars
@@ -136,6 +141,13 @@ def mxnet_x_entropy(name, logits, target):
     RHS = {name: (m_x_entropy(), [logits, target])}
     return LHS, RHS
 
+@bind_vars
+def mxnet_correct(name, classifier, target):
+    LHS = {name: (correct(), [classifier, target])}
+    RHS = {name: (m_correct(), [classifier, target])}
+    return LHS, RHS
+
+
 def rules(layout='NCHW'):
     return [
     mxnet_conv(layout=layout), 
@@ -148,7 +160,8 @@ def rules(layout='NCHW'):
     mxnet_x_entropy(),
     mxnet_concat_pool(layout=layout), 
     mxnet_add(), 
-    mxnet_relu()
+    mxnet_relu(),
+    mxnet_correct()
 ]
 
 @transfer.register(nd.NDArray)

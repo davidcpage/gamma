@@ -14,7 +14,7 @@ def _(x):
     return x.detach().cpu().numpy()  
 
 
-class TorchRecordingContext(object):
+class RecordingContext(object):
     def __init__(self):
         pass 
     def __enter__(self):
@@ -50,7 +50,7 @@ class TorchGraph(nn.Module):
         return prev_training_state
 
     def recording_context(self):
-        return TorchRecordingContext()
+        return RecordingContext()
  
 def rename(state_dict, rules):
     import parse
@@ -148,6 +148,11 @@ class Constant(nn.Module):
         self.size = tuple(value.size()) if size is None else size
     def forward(self): return self.value
 
+class Correct(nn.Module):
+    def forward(self, classifier, target):
+        return classifier.max(dim = 1)[1] == target
+
+
 
 class NodeDef(namedtuple('NodeDef', ['type', 'params'])):
     def __call__(self, *args, **kwargs): 
@@ -185,6 +190,7 @@ add       = node_def(Add)
 add_relu = node_def(AddRelu)
 constant = node_def(Constant)
 activation_func = node_def(ActivationFunc)
+correct = node_def(Correct)
 
 
 ################
@@ -208,8 +214,6 @@ def _(x, y):
 @zeros_like.register(torch.Tensor)
 def _(x):
     return torch.zeros_like(x)
-
-
 
 
 
