@@ -3,11 +3,11 @@ import mxnet
 from mxnet import gluon, nd
 from gamma.torch import *
 
-class m_AddRelu(gluon.Block):
-    def forward(self, x, y):
-        return nd.relu(x+y)
+class m_AddRelu(gluon.HybridBlock):
+    def hybrid_forward(self, F, x, y):
+        return F.relu(x+y)
     
-class MaxPool(gluon.Block):
+class MaxPool(gluon.HybridBlock):
     def __init__(self, pool_size=(2, 2), strides=None, padding=0, layout='NCHW',
                  ceil_mode=False, **kwargs):
         super(MaxPool, self).__init__(**kwargs)
@@ -15,27 +15,27 @@ class MaxPool(gluon.Block):
                                                 ceil_mode = ceil_mode, **kwargs)
         self.layout = layout
         
-    def forward(self, x):
+    def hybrid_forward(self, F, x):
         if self.layout == 'NHWC':
             return self.op(x.transpose([0,3,1,2])).transpose([0,2,3,1])
         return self.op(x)
 
-class GlobalAvgPool(gluon.Block):
+class GlobalAvgPool(gluon.HybridBlock):
     def __init__(self, layout='NCHW', **kwargs):
         super(GlobalAvgPool, self).__init__(**kwargs)
         self.op = gluon.nn.GlobalAvgPool2D(layout='NCHW', **kwargs)
         self.layout = layout
     
-    def forward(self, x):
+    def hybrid_forward(self, F, x):
         if self.layout == 'NHWC':
             return self.op(x.transpose([0,3,1,2]))
         return self.op(x) 
 
-class m_Add(gluon.Block):
-    def forward(self, x, y):
+class m_Add(gluon.HybridBlock):
+    def hybrid_forward(self, F, x, y):
         return x + y
 
-class m_ConcatPool(gluon.Block):
+class m_ConcatPool(gluon.HybridBlock):
     def __init__(self, layout='NCHW', **kwargs):
         super().__init__(**kwargs)
         self.layout=layout
@@ -43,18 +43,18 @@ class m_ConcatPool(gluon.Block):
         self.max_pool = gluon.nn.GlobalMaxPool2D()
         self.flatten = gluon.nn.Flatten()
         
-    def forward(self, x):
+    def hybrid_forward(self, F, x):
         if self.layout == 'NHWC':
             x = x.transpose([0,3,1,2])         
-        return mxnet.ndarray.concat(
+        return F.concat(
             self.flatten(self.avg_pool(x)),
             self.flatten(self.max_pool(x)),            
             dim=1
         )
     
-class m_Correct(gluon.Block):
-    def forward(self, classifier, target):
-        return nd.argmax(classifier, axis=1).astype(np.int) == target
+class m_Correct(gluon.HybridBlock):
+    def hybrid_forward(self, F, classifier, target):
+        return F.argmax(classifier, axis=1).astype(np.int) == target
     
 
 m_add = node_def(m_Add)
@@ -199,11 +199,49 @@ class MxnetGraph(gluon.Block):
             setattr(self, n, a['type'](**a['params']))
 
     def forward(self, inputs):
-        self.cache = dict(inputs)
+        cache = dict(inputs)
         for n, (a, i) in self.graph.items():
-            self.cache[n] = getattr(self, n)(*[self.cache[x] for x in i])
-        return self.cache
+            cache[n] = getattr(self, n)(*[cache[x] for x in i])
+        return cache
+        
+    def params_and_grads(self):
+        return ((name, param.data(), param.grad()) for 
+            (name, param) in self.collect_params().items() if param.grad_req != 'null')
+  
+    def zero_grad(self):
+        pass
 
+    def set_training(self, mode=True):
+        return mxnet.autograd.set_training(mode)
+
+    def recording_context(self):
+        return mxnet.autograd.record()
+
+
+class MxnetGraphHybrid(gluon.HybridBlock):
+    def __init__(self, graph):
+        super().__init__()
+        self.graph = dict(topological_sort(graph))
+        for n, (a, _) in self.graph.items(): 
+            if 'kwargs' in a['params']:
+                del a['params']['kwargs']
+            if issubclass(a['type'], gluon.Block):
+                a['params']['prefix'] = n + '/'
+            setattr(self, n, a['type'](**a['params']))
+
+    def hybrid_forward(self, F, x):
+        cache = {'input': x}
+        for n, (a, i) in self.graph.items():
+            cache[n] = getattr(self, n)(*[cache[x] for x in i])
+            if n == 'classifier': break
+        return cache['classifier']
+    
+    def __call__(self, inputs):
+        classifier = self.forward(inputs['input'])
+        loss = self.loss(classifier, inputs['target'])
+        correct = self.correct(classifier, inputs['target'])
+        return {'classifier': classifier, 'loss': loss, 'correct': correct}
+    
     def params_and_grads(self):
         return ((name, param.data(), param.grad()) for 
             (name, param) in self.collect_params().items() if param.grad_req != 'null')
@@ -217,6 +255,8 @@ class MxnetGraph(gluon.Block):
     def recording_context(self):
         return mxnet.autograd.record()
  
+    
+    
 def to_nd(x, ctx=None):
     if isinstance(x, dict):
         return {k: to_nd(v, ctx) for k, v in x.items()}
@@ -228,3 +268,5 @@ def load_state(model, state_dict, ctx):
     for k, p in model.collect_params().items():
         p._load_init(to_nd(state_dict[k]), ctx=ctx)
     return model
+
+
