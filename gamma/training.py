@@ -3,10 +3,10 @@ import math
 from collections import namedtuple
 import numpy as np
 
-
 ################
 # Transducers
 ################
+
 
 class compose(namedtuple('compose', ('fs'))):
     def __new__(cls, *args): 
@@ -39,9 +39,6 @@ class Transducer:
         self.reducer = reducer
         return self
 
-#    def __repr__(self):
- #       arg_string = ', '.join(f'{name!s}={value!r}' for name, value in self.params())
- #       return f'{type(self).__name__}({arg_string})'
 
 class Reducer:
     @staticmethod
@@ -82,7 +79,6 @@ def to_numpy(x):
 def zero_param(model):
     return {k: zeros_like(v) for k, v, _ in model.params_and_grads()}
 
-
 ##################
 # Training
 ##################   
@@ -92,16 +88,11 @@ class Forward(Reducer):
         self.training = training
     
     def initialize(self, state):
-        state['processed'] = 0
-        state['batches'] = 0
         self.prev_training_mode = state['model'].set_training(self.training)
         return state
     
     def step(self, state, inputs):
-        state['processed'] += len(inputs[0])
-        state['batches'] += 1
-        device = state['device']
-        output = state['model']({'input': transfer(inputs[0], device), 'target': transfer(inputs[1], device)})
+        state['output'] = state['model'](inputs)
         return state, False
 
     def finalize(self, state):
@@ -132,15 +123,20 @@ class Backward(Transducer):
         state['model'].zero_grad()
         with state['model'].recording_context():
             state, reduced = self.reducer.step(state, inputs)
-        state['model'].cache['loss'].backward()
+        state['output']['loss'].backward()
         return state, reduced
 
     def finalize(self, state):
         return self.reducer.finalize(state)
         
+def progress(state, inputs):
+    return state['epoch'] + inputs['batch_idx']/inputs['total_batches']
 
 class Optimizer(Transducer):
-    def init_state(self, opt_params, model):
+    def __init__(self, **params):
+        self.params = params
+
+    def init_state(self, opt_state, model):
         pass
 
     def update(self, param, grad, **kwargs):
@@ -155,17 +151,20 @@ class Optimizer(Transducer):
 
     def step(self, state, inputs):
         state, reduced = self.reducer.step(state, inputs)
-        if reduced: return state, reduced
-        state['optimizer']['N_step'] += 1
+        if reduced: return state, reduced 
+        t = progress(state, inputs)
+        opt_params = state['optimizer']
+        for k, f in self.params.items():
+            opt_params[k] = f(t) if callable(f) else f
+        opt_params['N_step'] += 1
         for name, param, grad in state['model'].params_and_grads():
-            opt_params = {k: v[name] if isinstance(v, dict) else v for (k, v) in state['optimizer'].items()}
-            self.update(param, grad, **opt_params)
+            self.update(param, grad, **{k: v[name] if isinstance(v, dict) else v for (k, v) in opt_params.items()})
         return state, reduced
 
 
 class Nesterov(Optimizer):
-    def init_state(self, opt_params, model):
-        if 'v' not in opt_params: opt_params['v'] = zero_param(model)
+    def init_state(self, opt_state, model):
+        if 'v' not in opt_state: opt_state['v'] = zero_param(model)
 
     def update(self, p, g, v, momentum, lr, weight_decay, **kwargs):
         add_(g, weight_decay, p)
@@ -181,22 +180,6 @@ class piecewise_linear(namedtuple('piecewise_linear', ('knots', 'vals'))):
  
 def plot_lr_schedule(lr_schedule, epochs, ax):
     return ax.plot(*zip(*[(x, lr_schedule(x)) for x in np.arange(0, epochs, 0.1)]))
-
-
-class LRScheduler(Transducer):
-    def __init__(self, params):
-        self.params = params
-
-    def initialize(self, state):
-        if 'optimizer' not in state: state['optimizer'] = {}
-        return self.reducer.initialize(state)
-
-    def step(self, state, inputs):
-        state, reduced = self.reducer.step(state, inputs)
-        progress = state['epoch'] + state['batches'] / state['epoch_length']
-        for k, f in self.params.items():
-            state['optimizer'][k] = f(progress) if callable(f) else f
-        return state, reduced
 
 
 class EarlyStop(Transducer):
