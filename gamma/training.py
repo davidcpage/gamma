@@ -99,19 +99,23 @@ class Forward(Reducer):
         state['model'].set_training(self.prev_training_mode)
         return state
 
+
 class Memo(Transducer):
-  def __init__(self, paths):
-    self.paths = paths
+    # funcs is a dictionary of {key: func}
+    # Memo records the value of func(state) in state['memo'][key]
+    def __init__(self, funcs):
+        self.funcs = funcs
     
-  def initialize(self, state):
-    if 'memo' not in state: state['memo'] = {path: [] for path in self.paths}
-    return self.reducer.initialize(state)
+    def initialize(self, state):
+        if 'memo' not in state: 
+            state['memo'] = {k: [] for k in self.funcs.keys()}
+        return self.reducer.initialize(state)
   
-  def step(self, state, inputs):
-    state, reduced = self.reducer.step(state, inputs)
-    for path in self.paths:
-      state['memo'][path].append(state['model'].param_value(*path))
-    return state, reduced
+    def step(self, state, inputs):
+        state, reduced = self.reducer.step(state, inputs)
+        for k, f in self.funcs.items():
+            state['memo'][k].append(f(state))
+        return state, reduced
   
 
 class Backward(Transducer):
