@@ -237,11 +237,14 @@ class MxnetGraphHybrid(gluon.HybridBlock):
         return cache['classifier']
     
     def __call__(self, inputs):
-        classifier = self.forward(inputs['input'])
-        loss = self.loss(classifier, inputs['target'])
-        correct = self.correct(classifier, inputs['target'])
-        return {'classifier': classifier, 'loss': loss, 'correct': correct}
-    
+        output_nodes = inputs.get('_output_nodes', ['loss', 'correct'])
+        cache = inputs
+        cache['classifier'] = self.forward(cache['input'])
+        for node in output_nodes:
+            (a, i) = self.graph[node]
+            cache[node] = getattr(self, node)(*[cache[x] for x in i])
+        return cache
+  
     def params_and_grads(self):
         return ((name, param.data(), param.grad()) for 
             (name, param) in self.collect_params().items() if param.grad_req != 'null')

@@ -116,9 +116,12 @@ class Memo(Transducer):
         for k, f in self.funcs.items():
             state['memo'][k].append(f(state))
         return state, reduced
-  
+
 
 class Backward(Transducer):
+    def __init__(self, loss_node='loss'):
+        self.loss_node = loss_node
+
     def initialize(self, state):
         state = self.reducer.initialize(state)
         return state
@@ -127,12 +130,13 @@ class Backward(Transducer):
         state['model'].zero_grad()
         with state['model'].recording_context():
             state, reduced = self.reducer.step(state, inputs)
-        state['output']['loss'].backward()
+        state['output'][self.loss_node].backward()
         return state, reduced
 
     def finalize(self, state):
         return self.reducer.finalize(state)
-        
+
+   
 def progress(state, inputs):
     return state['epoch'] + inputs['batch_idx']/inputs['total_batches']
 
@@ -181,7 +185,10 @@ class Nesterov(Optimizer):
 class piecewise_linear(namedtuple('piecewise_linear', ('knots', 'vals'))):
     def __call__(self, t): 
         return np.interp([t], self.knots, self.vals)[0]
- 
+    def __mul__(self, r):
+        return piecewise_linear(self.knots, [x*r for x in self.vals])
+    __rmul__ = __mul__
+
 def plot_lr_schedule(lr_schedule, epochs, ax):
     return ax.plot(*zip(*[(x, lr_schedule(x)) for x in np.arange(0, epochs, 0.1)]))
 
