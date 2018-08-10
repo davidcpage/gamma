@@ -152,7 +152,29 @@ class Correct(nn.Module):
     def forward(self, classifier, target):
         return classifier.max(dim = 1)[1] == target
 
+class Permute(nn.Module):
+    def __init__(self, before=(), after=()):
+        super().__init__()
+        self.order = [before.index(x) for x in after if x is not None]
+        self.extra = [i for (i,x) in enumerate(after) if x is None]
+        
+    def forward(self, x):
+        x = x.permute(*self.order)
+        for i in self.extra:
+            x.unsqueeze_(dim=i)
+        return x.contiguous()
 
+class SequencewiseBN(nn.BatchNorm1d):
+    def forward(self, x):
+        *ns, n = x.size()
+        x = x.view(-1, n)
+        x = super().forward(x)
+        return x.view(*ns, n)
+
+class FlattenLast(nn.Module):
+    def forward(self, x):
+        *sizes, n, m = x.size()
+        return x.view(*sizes, n*m)
 
 class NodeDef(namedtuple('NodeDef', ['type', 'params'])):
     def __call__(self, *args, **kwargs): 
@@ -184,6 +206,12 @@ dropout   = node_def(nn.Dropout)
 shortcut  = node_def(Shortcut)
 global_avg_pool = node_def(GlobalAvgPool2d)
 relu      = node_def(nn.ReLU)
+
+clip = node_def(nn.Hardtanh, inplace=True)
+permute = node_def(Permute)
+sequencewise_bn = node_def(SequencewiseBN)
+flatten_last = node_def(FlattenLast)
+
 relu6     = node_def(nn.ReLU6)
 x_entropy = node_def(nn.CrossEntropyLoss)
 add       = node_def(Add)
