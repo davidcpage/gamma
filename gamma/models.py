@@ -24,7 +24,7 @@ def basic_net(blocks, num_classes):
         ('prep', prep(get_param(blocks[0], 'in_channels')), ['input']),
         *blocks,
         ('classifier', classifier(get_param(blocks[-1], 'out_channels'), num_classes)),
-        ('loss', x_entropy(), ['classifier', 'target'])
+     #   ('loss', x_entropy(), ['classifier', 'target'])
     ])
 
 def mobilenetV2(num_classes):
