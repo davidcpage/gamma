@@ -25,14 +25,14 @@ class RecordingContext(object):
 class TorchGraph(nn.Module):
     def __init__(self, graph, verbose=False):
         super().__init__()
-        self.graph = dict(topological_sort(graph))
+        self.graph = list(topological_sort(graph))
         self.verbose = verbose
-        for n, (a, _) in self.graph.items(): 
+        for n, (a, _) in self.graph: 
             setattr(self, n, a['type'](**a['params']))
 
     def forward(self, inputs):
         self.cache = dict(inputs)
-        for n, (a, i) in self.graph.items():
+        for n, (a, i) in self.graph:
             if self.verbose: print(n)
             self.cache[n] = getattr(self, n)(*[self.cache[x] for x in i])
         return self.cache

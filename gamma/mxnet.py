@@ -190,8 +190,8 @@ def _(x):
 class MxnetGraph(gluon.Block):
     def __init__(self, graph):
         super().__init__()
-        self.graph = dict(topological_sort(graph))
-        for n, (a, _) in self.graph.items(): 
+        self.graph = list(topological_sort(graph))
+        for n, (a, _) in self.graph: 
             if 'kwargs' in a['params']:
                 del a['params']['kwargs']
             if issubclass(a['type'], gluon.Block):
@@ -200,7 +200,7 @@ class MxnetGraph(gluon.Block):
 
     def forward(self, inputs):
         cache = dict(inputs)
-        for n, (a, i) in self.graph.items():
+        for n, (a, i) in self.graph:
             cache[n] = getattr(self, n)(*[cache[x] for x in i])
         return cache
         
@@ -221,8 +221,8 @@ class MxnetGraph(gluon.Block):
 class MxnetGraphHybrid(gluon.HybridBlock):
     def __init__(self, graph):
         super().__init__()
-        self.graph = dict(topological_sort(graph))
-        for n, (a, _) in self.graph.items(): 
+        self.graph = list(topological_sort(graph))
+        for n, (a, _) in self.graph: 
             if 'kwargs' in a['params']:
                 del a['params']['kwargs']
             if issubclass(a['type'], gluon.Block):
@@ -231,7 +231,7 @@ class MxnetGraphHybrid(gluon.HybridBlock):
 
     def hybrid_forward(self, F, x):
         cache = {'input': x}
-        for n, (a, i) in self.graph.items():
+        for n, (a, i) in self.graph:
             cache[n] = getattr(self, n)(*[cache[x] for x in i])
             if n == 'classifier': break
         return cache['classifier']
