@@ -71,7 +71,7 @@ def draw(graphs, legend=True, scale=1, sep='/', **kwargs):
         edges = ((src, k, {}) for k, n in graph.items()
                 for src in input_nodes(n))
         svg = draw_pydot(nodes, edges, size=size, **kwargs)
-        width = int(re.search('width="([0-9]*)pt"',svg)[1])
+        width = int(re.search('width="([0-9]*)pt"',svg).groups()[0])
         html += '<div style="min-width: {width}pt">{svg}</div>'.format(width=width, svg=svg)
         types += [a['type'] for (a, i) in graph.values()]
     if legend:
