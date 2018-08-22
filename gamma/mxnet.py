@@ -257,7 +257,6 @@ class MxnetGraphHybrid(gluon.HybridBlock):
 
     def recording_context(self):
         return mxnet.autograd.record()
- 
     
     
 def to_nd(x, ctx=None):
@@ -267,9 +266,18 @@ def to_nd(x, ctx=None):
         x = to_numpy(x)
     return nd.array(x, ctx=ctx, dtype=x.dtype)
 
-def load_state(model, state_dict, ctx):
+
+def load_state(model, state_dict, ctx, strict=False):
+    not_found = []
     for k, p in model.collect_params().items():
-        p._load_init(to_nd(state_dict[k]), ctx=ctx)
+        if k in state_dict:
+            p._load_init(to_nd(state_dict[k]), ctx=ctx)
+        else:
+            not_found.append(k)
+            p.initialize(ctx=ctx)
+    if len(not_found):
+        warning = 'Warning initialising {not_found}'.format(not_found=not_found)
+        if strict:
+            raise Exception(warning)
+        print(warning)
     return model
-
-

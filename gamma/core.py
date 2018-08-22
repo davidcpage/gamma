@@ -22,7 +22,7 @@ class var(object):
         #various parts of the code expect node['inputs'] to be an iterable.. not sure this is a good idea.
         return iter(())
 
-    def __str__(self): return f'_{self.token}'
+    def __str__(self): return '_{token}'.format(token=self.token)
     __repr__ = __str__
 
     @classmethod
@@ -37,7 +37,7 @@ def walk(key, d):
 
 
 class Wildcard():
-    def __str__(self): return f'Wildcard_{id(self)}'
+    def __str__(self): return 'Wildcard_{i}'.format(i=id(self))
     __repr__ = __str__
 
 
@@ -285,7 +285,7 @@ def pipeline(nodes, prefix=None):
     return graph
 
 def make_pattern(graph):
-    return {var(n): make_node_attr(a['type'], var(f'{n}_params'), 
+    return {var(n): make_node_attr(a['type'], var('{n}_params'.format(n=n)), 
              [var(x) for x in i]) 
       for n, (a, i) in graph.items()}
 
@@ -304,7 +304,7 @@ def make_subgraph_node(subgraph, input_names=None):
     #in params['nodes] so that if reindex is called on the outer graph there 
     #is no need to rename things inside subgraph params['nodes']
     inputs = list(external_inputs(subgraph))
-    input_names = input_names or (f'in{i}' for i in range(len(inputs)))
+    input_names = input_names or ('in{i}'.format(i=i) for i in range(len(inputs)))
     return make_node_attr('Graph', {'nodes': reindex(subgraph, dict(zip(inputs, input_names))), 
                                         'input_names': input_names}, inputs)
 
@@ -313,7 +313,7 @@ def move_to_subgraphs(groups, graph):
     all_nodes = external_inputs(graph).union(graph)
     clashes = [group_name for group_name, _ in groups if group_name in all_nodes]
     if len(clashes):
-        raise Exception(f'Name clash between groups {clashes} and nodes in the graph')
+        raise Exception('Name clash between groups {clashes} and nodes in the graph'.format(clashes=clashes))
     subgraph_nodes = {group_name: make_subgraph_node({n: graph[n] for n in nodes}, group_name) 
                         for group_name, nodes in groups}
     remove = {n for _, nodes in groups for n in nodes}

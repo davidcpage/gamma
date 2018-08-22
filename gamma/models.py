@@ -39,7 +39,7 @@ def mobilenetV2(num_classes):
         [b( 96,  96*6, 160, 2)] + [r(160, 160*6, 160, 1)]*2 +
         [b(160, 160*6, 320, 1)]
     )
-    layers = [(f'block_{i}', layer) for (i, layer) in enumerate(layers, 1)]
+    layers = [('block_{i}'.format(i=i), layer) for (i, layer) in enumerate(layers, 1)]
     net_initial = pipeline([
         ('prep/conv_1', conv_bn(3, 32,  kernel_size=3, padding=1, stride=2, activation=act), ['input']),
         ('prep/conv_2', conv_bn(32, 32, kernel_size=3, padding=1, groups=32, activation=act)),
@@ -100,13 +100,13 @@ config = {
 }
 
 def build_resnet(layer_params, layer_func, rules, num_classes):
-    layers = [(path(f'layer_{i}', f'block_{j}'), layer_func(*block)) for 
+    layers = [(path('layer_{i}'.format(i=i), 'block_{j}'.format(j=j)), layer_func(*block)) for 
         (i, layer) in enumerate(layer_params, 1) for j, block in enumerate(layer)]
     net_initial = basic_net(layers, num_classes)  
     return net_initial, rules, apply_rules(net_initial, rules)
     
 def resnet(depth, num_classes):
-    layer_params = config[f'resnet{depth}']
+    layer_params = config['resnet{depth}'.format(depth=depth)]
     layer_func = lambda c_in, c_out, s, h=None: residual_block(c_in, c_out, s, h, 1, F.relu, add_relu(True))
     rules = [
         resnet_prep(), resnet_classifier(), 
@@ -246,7 +246,7 @@ def load_resnet_weights(depth):
     import torchvision
     import torch.utils.model_zoo as model_zoo
     
-    model_name = f'resnet{depth}'
+    model_name = 'resnet{depth}'.format(depth=depth)
     state_dict = model_zoo.load_url(torchvision.models.resnet.model_urls[model_name])
     name_rules = [
         ('conv1.{}', 'prep/conv/{}'),

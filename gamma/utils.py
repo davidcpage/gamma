@@ -72,7 +72,7 @@ def draw(graphs, legend=True, scale=1, sep='/', **kwargs):
                 for src in input_nodes(n))
         svg = draw_pydot(nodes, edges, size=size, **kwargs)
         width = int(re.search('width="([0-9]*)pt"',svg)[1])
-        html += f'<div style="min-width: {width}pt">{svg}</div>'
+        html += '<div style="min-width: {width}pt">{svg}</div>'.format(width=width, svg=svg)
         types += [a['type'] for (a, i) in graph.values()]
     if legend:
         html = ColorMap.html({t: COLORS[t] for t in types}) + html
@@ -117,7 +117,7 @@ def get_file(origin, fname=None, cache_dir='~/.gamma'):
         if origin.endswith(suffix) and not fpath.endswith(suffix):
             sfx = suffix
     if not os.path.exists(fpath+sfx):
-        desc = f'Downloading from {origin}'
+        desc = 'Downloading from {origin}'.format(origin=origin)
         with tqdm(unit='B', unit_scale=True, miniters=1, desc=desc) as pbar:
             def reporthook(blocknum, bs, size):
                 pbar.total = size
