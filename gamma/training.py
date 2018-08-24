@@ -117,10 +117,10 @@ class Memo(Transducer):
             state['memo'][k].append(f(state))
         return state, reduced
 
-
 class Backward(Transducer):
-    def __init__(self, loss_node='loss'):
+    def __init__(self, loss_node='loss', loss_scale=None):
         self.loss_node = loss_node
+        self.loss_scale = loss_scale
 
     def initialize(self, state):
         state = self.reducer.initialize(state)
@@ -130,7 +130,9 @@ class Backward(Transducer):
         state['model'].zero_grad()
         with state['model'].recording_context():
             state, reduced = self.reducer.step(state, inputs)
-        state['output'][self.loss_node].backward()
+            loss = state['output'][self.loss_node]
+            if self.loss_scale is not None: loss = loss*self.loss_scale
+        loss.backward()
         return state, reduced
 
     def finalize(self, state):
