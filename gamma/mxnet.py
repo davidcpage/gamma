@@ -3,6 +3,8 @@ import mxnet
 from mxnet import gluon, nd
 from gamma.torch import *
 
+from collections import OrderedDict
+
 class m_AddRelu(gluon.HybridBlock):
     def hybrid_forward(self, F, x, y):
         return F.relu(x+y)
@@ -221,8 +223,8 @@ class MxnetGraph(gluon.Block):
 class MxnetGraphHybrid(gluon.HybridBlock):
     def __init__(self, graph):
         super().__init__()
-        self.graph = list(topological_sort(graph))
-        for n, (a, _) in self.graph: 
+        self.graph = OrderedDict(topological_sort(graph))
+        for n, (a, _) in self.graph.items(): 
             if 'kwargs' in a['params']:
                 del a['params']['kwargs']
             if issubclass(a['type'], gluon.Block):
@@ -231,7 +233,7 @@ class MxnetGraphHybrid(gluon.HybridBlock):
 
     def hybrid_forward(self, F, x):
         cache = {'input': x}
-        for n, (a, i) in self.graph:
+        for n, (a, i) in self.graph.items():
             cache[n] = getattr(self, n)(*[cache[x] for x in i])
             if n == 'classifier': break
         return cache['classifier']
