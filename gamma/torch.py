@@ -4,6 +4,7 @@ from torch.nn import functional as F
 from collections import namedtuple
 from inspect import signature
 from gamma.core import *
+from gamma.nodes import *
 from gamma.training import Transducer, Optimizer, transfer, add_, mul_, zeros_like, to_numpy
 
 class transpose(namedtuple('transpose', ('source', 'target'))):
@@ -193,33 +194,45 @@ def node_def(type, **defaults):
         sig = sig.replace(parameters=params)
     return NodeDef(type, sig)
 
+def gen_rule(node_type, torch_type):
+    LHS = {var('name'): ({'type': node_type.type, 'params': {k: var(k) for k in node_type.params.parameters}}, var('inputs'))}
+    RHS = {var('name'): ({'type': torch_type, 'params': {k: var(k) for k in node_type.params.parameters}}, var('inputs'))}
+    return LHS, RHS
 
-identity  = node_def(Identity)  
-pool      = node_def(ConcatPool2d)
-linear    = node_def(nn.Linear)
-bn        = node_def(nn.BatchNorm2d)
-conv      = node_def(nn.Conv2d)
+def torch_rules():
+    node_types = {
+        add_relu: AddRelu,
+        bn: nn.BatchNorm2d,
+        concat_pool_2d: ConcatPool2d,
+        conv: nn.Conv2d,
+        identity: Identity,
+        linear: nn.Linear,
+        max_pool: nn.MaxPool2d,
+        dropout: nn.Dropout,
+        shortcut: Shortcut,
+        global_avg_pool: GlobalAvgPool2d,
+        relu: nn.ReLU,
+        relu6: nn.ReLU6,
+        clip: nn.Hardtanh,
+        x_entropy: nn.CrossEntropyLoss,
+        add: Add,
+        correct: Correct
+    }
+    return [gen_rule(k, v) for k,v in node_types.items()]
+
+
+
+
 conv_op   = node_def(ConvOp)
 bn_op     = node_def(BatchNormOp)
 linear_op = node_def(LinearOp)
-max_pool  = node_def(nn.MaxPool2d)
-dropout   = node_def(nn.Dropout)
-shortcut  = node_def(Shortcut)
-global_avg_pool = node_def(GlobalAvgPool2d)
-relu      = node_def(nn.ReLU)
-
-clip = node_def(nn.Hardtanh, inplace=True)
 permute = node_def(Permute)
 sequencewise_bn = node_def(SequencewiseBN)
 flatten_last = node_def(FlattenLast)
 
-relu6     = node_def(nn.ReLU6)
-x_entropy = node_def(nn.CrossEntropyLoss)
-add       = node_def(Add)
-add_relu = node_def(AddRelu)
 constant = node_def(Constant)
 activation_func = node_def(ActivationFunc)
-correct = node_def(Correct)
+
 
 
 ################
@@ -266,3 +279,4 @@ class Adam(Optimizer):
             if self.AdamW: p.add_(-lr*weight_decay, p)
             p.addcdiv_(-step_size, avg_grad, denom)
     
+

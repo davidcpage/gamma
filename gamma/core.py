@@ -31,8 +31,10 @@ class var(object):
 
 
 def walk(key, d):
-    while key in d:
+    while key in d: 
         key = d[key]
+        if isinstance(key, dict): #if a var is bound to a dict, need to break out
+            break 
     return key
 
 

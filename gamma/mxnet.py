@@ -1,7 +1,7 @@
 import numpy as np
 import mxnet
 from mxnet import gluon, nd
-from gamma.torch import *
+from gamma.nodes import *
 
 from collections import OrderedDict
 

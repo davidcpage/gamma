@@ -1,18 +1,17 @@
 from gamma.core import *
-from gamma.torch import *
+from gamma.nodes import *
 
 ################
 ### Node types
 ################
 
-prep = node('Prep', ('out_channels'))
-classifier = node('Classifier', ('in_channels', 'out_channels'))
+prep = node('Prep', ['out_channels'])
+classifier = node('Classifier', ['in_channels', 'out_channels'])
 residual_block = node('ResidualBlock', ['in_channels', 'out_channels', 'stride', 
     'h_channels', 'groups', 'act', 'join'])
 block = node('Block', ['in_channels', 'out_channels', 'stride', 'h_channels', 'groups', 'act'])
 preact_block = node('PreActBlock', ['in_channels', 'out_channels', 'stride'])
-conv_bn = node('ConvBN', ['in_channels', 'out_channels', 'kernel_size', 'stride', 
-            'padding', 'groups', 'activation', 'eps'], stride=1, padding=0, groups=1, activation=F.relu, eps=1e-5)
+conv_bn = node('ConvBN', ['in_channels', 'out_channels', 'kernel_size'], stride=1, padding=0, groups=1, activation=relu(), eps=1e-5)
  
 ######################
 ### Network defns
@@ -28,7 +27,7 @@ def basic_net(blocks, num_classes):
     ])
 
 def mobilenetV2(num_classes):
-    act = F.relu6
+    act=relu6()
     b = lambda c_in, h, c_out, s: block(c_in, c_out, s, h, h, act)
     r = lambda c_in, h, c_out, s: residual_block(c_in, c_out, s, h, h, act, add()) 
     layers = (
@@ -43,7 +42,7 @@ def mobilenetV2(num_classes):
     net_initial = pipeline([
         ('prep/conv_1', conv_bn(3, 32,  kernel_size=3, padding=1, stride=2, activation=act), ['input']),
         ('prep/conv_2', conv_bn(32, 32, kernel_size=3, padding=1, groups=32, activation=act)),
-        ('prep/conv_3', conv_bn(32, 16, kernel_size=1, activation=None)),
+        ('prep/conv_3', conv_bn(32, 16, kernel_size=1, activation=identity())),
         *layers,
         ('classifier/expand', conv_bn(320, 1280, kernel_size=1, activation=act)),
         ('classifier/avg_pool', global_avg_pool()),
@@ -107,7 +106,7 @@ def build_resnet(layer_params, layer_func, rules, num_classes):
     
 def resnet(depth, num_classes):
     layer_params = config['resnet{depth}'.format(depth=depth)]
-    layer_func = lambda c_in, c_out, s, h=None: residual_block(c_in, c_out, s, h, 1, F.relu, add_relu(True))
+    layer_func = lambda c_in, c_out, s, h=None: residual_block(c_in, c_out, s, h, 1, relu(), add_relu(True))
     rules = [
         resnet_prep(), resnet_classifier(), 
         expand_residuals(), replace_identity_shortcuts(), replace_shortcuts_conv_bn(), 
@@ -132,7 +131,7 @@ def cifar_resnet(name, num_classes=10):
 def resnet_prep(out_channels, _in):
     LHS = {'prep': (prep(out_channels), [_in])}
     RHS = pipeline([
-        ('prep', conv_bn(3, 64, (7, 7), stride=2, padding=3, activation=F.relu), [_in]),
+        ('prep', conv_bn(3, 64, (7, 7), stride=2, padding=3, activation=relu()), [_in]),
         ('maxpool', max_pool((3, 3), stride=2, padding=1)),
     ])
     return LHS, RHS, ('prep', 'maxpool')
@@ -174,7 +173,7 @@ def replace_shortcuts_conv(block_name, in_channels, out_channels, stride, _in):
 @bind_vars
 def replace_shortcuts_conv_bn(block_name, in_channels, out_channels, stride, _in):
     LHS = {path(block_name, 'shortcut'): (shortcut(in_channels, out_channels, stride), [_in])}
-    RHS = {path(block_name, 'downsample'): (conv_bn(in_channels, out_channels, (1, 1), stride, activation=None), [_in])}
+    RHS = {path(block_name, 'downsample'): (conv_bn(in_channels, out_channels, (1, 1), stride, activation=identity()), [_in])}
     return LHS, RHS, (path(block_name, 'shortcut'), path(block_name, 'downsample'))
 
 @bind_vars
@@ -182,7 +181,7 @@ def expand_blocks_3_3(block_name, in_channels, out_channels, stride, act, _in):
     LHS = {block_name: (block(in_channels, out_channels, stride, None, 1, act), [_in])}  
     RHS = pipeline([
         (path(block_name, 'conv_1'), conv_bn(in_channels, out_channels, (3, 3), stride=stride, padding=1, activation=act), [_in]),
-        (path(block_name, 'conv_2'), conv_bn(out_channels, out_channels, (3, 3), stride=1, padding=1, activation=None))
+        (path(block_name, 'conv_2'), conv_bn(out_channels, out_channels, (3, 3), stride=1, padding=1, activation=identity()))
     ])
     return LHS, RHS, (block_name, path(block_name, 'conv_2'))
                                         
@@ -192,7 +191,7 @@ def expand_blocks_1_3_1(block_name, in_channels, out_channels, stride, h_channel
     RHS = pipeline([
         ('conv_1', conv_bn(in_channels, h_channels, (1, 1), stride=1, activation=act), [_in]),
         ('conv_2', conv_bn(h_channels, h_channels, (3, 3), stride=stride, padding=1, groups=groups, activation=act)),
-        ('conv_3', conv_bn(h_channels, out_channels, (1, 1), stride=1, activation=None)) 
+        ('conv_3', conv_bn(h_channels, out_channels, (1, 1), stride=1, activation=identity())) 
     ], prefix=block_name)
     return LHS, RHS, (block_name, path(block_name, 'conv_3'))
 
@@ -219,7 +218,7 @@ def expand_conv_bns(name, in_channels, out_channels, kernel_size, stride, paddin
         ('conv', conv(in_channels, out_channels, kernel_size, stride=stride, padding=padding, groups=groups,
                     bias=False), [_in]),
         ('bn', bn(out_channels, eps=eps)),
-        ('act', activation_func(activation_func=activation)),
+        ('act', activation),
     ], prefix=name)
     return LHS, RHS, (name, path(name, 'act'))
 
@@ -233,7 +232,7 @@ def cifar_resnet_prep(out_channels, _in):
 def cifar_resnet_classifier(in_channels, out_channels, _in):
     LHS = {'classifier': (classifier(in_channels, out_channels), [_in])}
     RHS = pipeline([
-            ('pool', pool(), [_in]),
+            ('pool', concat_pool_2d(), [_in]),
             ('classifier', linear(in_channels*2, out_channels)),
     ])
     return LHS, RHS
