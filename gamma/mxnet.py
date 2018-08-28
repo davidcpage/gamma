@@ -2,6 +2,8 @@ import numpy as np
 import mxnet
 from mxnet import gluon, nd
 from gamma.nodes import *
+from gamma.core import bind_vars
+from gamma.training import Transducer, Optimizer, transfer, add_, mul_, zeros_like, to_numpy
 
 from collections import OrderedDict
 
