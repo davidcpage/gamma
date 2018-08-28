@@ -209,4 +209,5 @@ class EarlyStop(Transducer):
         reduced = reduced or (self.counter == self.num_batches)
         return state, reduced
 
-    
+class transpose(namedtuple('transpose', ('source', 'target'))):
+    def __call__(self, data): return data.transpose([self.source.index(x) for x in self.target])

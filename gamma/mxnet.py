@@ -122,7 +122,7 @@ def mxnet_activation_func(act_func, act_func_name, name, _in):
 
 @bind_vars
 def mxnet_concat_pool(name, layout, _in):
-    LHS = {name: (pool(), [_in])}
+    LHS = {name: (concat_pool_2d(), [_in])}
     RHS = {name: (m_concat_pool(layout=layout), [_in])}
     return LHS, RHS
 
@@ -160,7 +160,7 @@ def rules(layout='NCHW'):
     mxnet_linear(), 
     mxnet_add_relu(), 
     mxnet_bn(axis=layout.index('C')), 
-    mxnet_activation_func(act_func=F.relu, act_func_name='relu'), 
+    mxnet_activation_func(act_func=relu(), act_func_name='relu'), 
     mxnet_x_entropy(),
     mxnet_concat_pool(layout=layout), 
     mxnet_add(), 
@@ -266,8 +266,8 @@ class MxnetGraphHybrid(gluon.HybridBlock):
 def to_nd(x, ctx=None):
     if isinstance(x, dict):
         return {k: to_nd(v, ctx) for k, v in x.items()}
-    if isinstance(x, torch.Tensor):
-        x = to_numpy(x)
+    #if isinstance(x, torch.Tensor):
+    #    x = to_numpy(x)
     return nd.array(x, ctx=ctx, dtype=x.dtype)
 
 

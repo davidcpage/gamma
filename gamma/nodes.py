@@ -19,6 +19,15 @@ def node_def(type, **defaults):
         sig = sig.replace(parameters=params)
     return NodeDef(type, sig)
 
+class Shortcut():
+    def __init__(self, in_channels, out_channels, stride, identity=False):
+        self.in_channels, self.out_channels, self.stride, self.identity = in_channels, out_channels, stride, identity
+    def __call__(self, x):
+        if self.identity: return x
+        raise NotImplementedError
+       
+
+activation_func = node('ActivationFunc', activation_func=None, inplace=True)
 add = node('Add', inplace=True)
 add_relu = node('AddRelu', inplace=False)
 bn = node('BatchNorm2d', ['num_features'], eps=1e-5, momentum=0.1, affine=True, track_running_stats=True)
@@ -34,6 +43,6 @@ linear = node('Linear', ['in_features', 'out_features'], bias=True)
 max_pool = node('MaxPool2d', ['kernel_size'], stride=None, padding=0, dilation=1, return_indices=False, ceil_mode=False)
 relu = node('ReLU', inplace=False)
 relu6 = node('ReLU6', inplace=False)
-shortcut = node('Shortcut', ['in_channels', 'out_channels', 'stride'], identity=False)
 x_entropy = node('CrossEntropyLoss', weight=None, size_average=True, ignore_index=-100, reduce=True)
 
+shortcut = node_def(Shortcut)#, ['in_channels', 'out_channels', 'stride'], identity=False)

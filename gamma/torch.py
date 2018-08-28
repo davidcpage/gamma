@@ -7,8 +7,7 @@ from gamma.core import *
 from gamma.nodes import *
 from gamma.training import Transducer, Optimizer, transfer, add_, mul_, zeros_like, to_numpy
 
-class transpose(namedtuple('transpose', ('source', 'target'))):
-    def __call__(self, data): return data.transpose([self.source.index(x) for x in self.target])
+
 
 @to_numpy.register(torch.Tensor)
 def _(x): 
@@ -86,14 +85,7 @@ class ActivationFunc(nn.Module):
         return self.activation_func(x, inplace=self.inplace)
 
 
-class Shortcut(nn.Module):
-    def __init__(self, in_channels, out_channels, stride, identity=False):
-        super().__init__()
-        self.in_channels, self.out_channels, self.stride, self.identity = in_channels, out_channels, stride, identity
-    def forward(self, x):
-        if self.identity: return x
-        raise NotImplementedError
-        
+ 
 
 class Add(nn.Module):
     def __init__(self, inplace=True):
@@ -201,6 +193,7 @@ def gen_rule(node_type, torch_type):
 
 def torch_rules():
     node_types = {
+        activation_func: ActivationFunc,
         add_relu: AddRelu,
         bn: nn.BatchNorm2d,
         concat_pool_2d: ConcatPool2d,
@@ -209,7 +202,7 @@ def torch_rules():
         linear: nn.Linear,
         max_pool: nn.MaxPool2d,
         dropout: nn.Dropout,
-        shortcut: Shortcut,
+      #  shortcut: Shortcut,
         global_avg_pool: GlobalAvgPool2d,
         relu: nn.ReLU,
         relu6: nn.ReLU6,
@@ -231,7 +224,6 @@ sequencewise_bn = node_def(SequencewiseBN)
 flatten_last = node_def(FlattenLast)
 
 constant = node_def(Constant)
-activation_func = node_def(ActivationFunc)
 
 
 
