@@ -57,7 +57,7 @@ get_params = lambda a: a['params'] if isinstance(a, dict) else {} #better logic 
 def draw(graphs, legend=True, scale=1, sep='/', **kwargs):
     if isinstance(graphs, dict): #single graph
         graphs = (graphs,)
-    html, types, = '', []
+    types, svgs = [], []
     for graph in graphs:
         if not (isinstance(graph, dict) and len(graph)): continue
         type_name = lambda t: getattr(t, '__name__', t) 
@@ -70,11 +70,12 @@ def draw(graphs, legend=True, scale=1, sep='/', **kwargs):
                 }) for k, (attr, i) in graph.items()]
         edges = ((src, k, {}) for k, n in graph.items()
                 for src in input_nodes(n))
-        svg = draw_pydot(nodes, edges, size=size, **kwargs)
+        svgs.append(draw_pydot(nodes, edges, size=size, **kwargs))
         types += [a['type'] for (a, i) in graph.values()]
     if legend:
         display(HTML(ColorMap.html({t: COLORS[t] for t in types})))
-    display(SVG(svg))
+    for svg in svgs:
+        display(SVG(svg))
 
 
 def draw_pydot(nodes, edges, direction='LR', **kwargs):
