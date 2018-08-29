@@ -58,7 +58,7 @@ class m_ConcatPool(gluon.HybridBlock):
     
 class m_Correct(gluon.HybridBlock):
     def hybrid_forward(self, F, classifier, target):
-        return F.argmax(classifier, axis=1).astype(np.int) == target
+        return F.argmax(classifier, axis=1).astype(np.int32) == target
     
 
 m_add = node_def(m_Add)
