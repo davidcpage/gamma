@@ -52,6 +52,12 @@ class TorchGraph(nn.Module):
 
     def recording_context(self):
         return RecordingContext()
+
+    def half(self):
+        for module in self.children():
+            if type(module) is not nn.BatchNorm2d:
+                module.half()    
+        return self
  
 def rename(state_dict, rules):
     import parse
