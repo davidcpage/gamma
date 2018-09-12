@@ -68,6 +68,8 @@ Times = namedtuple('Times', ('var', 'n'))
 var.__mul__ = lambda self, other: Times(self, other)
 
 def path(x, y):
+    if x is None:
+        return y
     if isinstance(x, str) and isinstance(y, str):
         return '/'.join([x, y])
     return Path(x, y)
@@ -423,3 +425,4 @@ def apply_rule(graph, rule):
                         p in keep_if(productions, ok)]
     graph = {k: (a, [walk(x, redirects) for x in i]) for (k, (a, i)) in graph.items() if k not in matched_nodes}
     return union(graph, *productions)
+
