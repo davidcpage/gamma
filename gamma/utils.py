@@ -1,6 +1,6 @@
 import pydot
 from IPython.display import display, HTML, SVG
-from gamma.core import FuncCache, input_nodes, depths, path_iter
+from gamma.core import FuncCache, input_nodes, depths, path_iter, topological_sort
 import os
 from urllib.request import urlretrieve
 import hashlib
@@ -54,12 +54,13 @@ def stub(path):
 get_type = lambda a: a['type'] if isinstance(a, dict) else type(a)
 get_params = lambda a: a['params'] if isinstance(a, dict) else {} #better logic here
 
-def draw(graphs, legend=True, scale=1, sep='/', **kwargs):
+def draw(graphs, legend=True, scale=1, sep='/', extra_nodes=(), extra_edges=(), **kwargs):
     if isinstance(graphs, dict): #single graph
         graphs = (graphs,)
     types, svgs = [], []
     for graph in graphs:
         if not (isinstance(graph, dict) and len(graph)): continue
+        graph = dict(topological_sort(graph)) #fix ordering so that legend displays in better order
         type_name = lambda t: getattr(t, '__name__', t) 
         graph = {n: ({'type': type_name(get_type(a)), 'params': get_params(a)}, i) for (n, (a, i)) in graph.items()}
         height = max(depths(graph).values())
@@ -67,9 +68,9 @@ def draw(graphs, legend=True, scale=1, sep='/', **kwargs):
         nodes = [(k, tuple(path_iter(k, sep)),
                 {'tooltip': '%s %s %.1000r' % (str(k), attr['type'], attr['params']),
                 'fillcolor': COLORS[attr['type']],
-                }) for k, (attr, i) in graph.items()]
-        edges = ((src, k, {}) for k, n in graph.items()
-                for src in input_nodes(n))
+                }) for k, (attr, i) in graph.items()] + [(k, tuple(path_iter(k, sep)), attr) for (k, attr) in extra_nodes]
+        edges = [(src, k, {}) for k, n in graph.items()
+                for src in input_nodes(n)] + list(extra_edges)
         svgs.append(draw_pydot(nodes, edges, size=size, **kwargs))
         types += [a['type'] for (a, i) in graph.values()]
     if legend:
