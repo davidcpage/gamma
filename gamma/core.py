@@ -410,8 +410,14 @@ def _check_dangling_edges(graph, matched_nodes, productions, redirects):
 def keep_if(it, mask):
     return (x for (x, b) in zip(it, mask) if b)
 
+
+
 def apply_rule(graph, rule):
     LHS, RHS, *redirects = rule
+    if not len(redirects): #if redirects is not specified, default to redirecting final node of LHS to final node of RHS
+        output_node = lambda g: list(topological_sort(g))[-1][0]
+        redirects = [(output_node(LHS), output_node(RHS))]
+
     LHS = reify(LHS, {}) #replace Wildcards with var(Wildcard()); do it here so that we know which keys to remove below
     matches = _search(LHS, graph)
     # remove matched nodes except for inputs
@@ -420,7 +426,7 @@ def apply_rule(graph, rule):
     ok = _check_dangling_edges(graph, matched_nodes, productions, redirects)
 
     matched_nodes = {n for match in keep_if(matched_nodes, ok) for n in match}
-    redirects = dict(r for rs in keep_if(redirects, ok) for r in rs)
+    redirects = dict((l, r) for rs in keep_if(redirects, ok) for (l, r) in rs if l != r)
     productions = [{k: (a, [(x if x in p else walk(x, redirects)) for x in i]) for (k, (a, i)) in p.items()} for 
                         p in keep_if(productions, ok)]
     graph = {k: (a, [walk(x, redirects) for x in i]) for (k, (a, i)) in graph.items() if k not in matched_nodes}
