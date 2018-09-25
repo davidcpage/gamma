@@ -54,7 +54,7 @@ def stub(path):
 get_type = lambda a: a['type'] if isinstance(a, dict) else type(a)
 get_params = lambda a: a['params'] if isinstance(a, dict) else {} #better logic here
 
-def draw(graphs, legend=True, scale=1, sep='/', extra_nodes=(), extra_edges=(), **kwargs):
+def draw(graphs, legend=True, scale=1, sep='/', extra_nodes=(), extra_edges=(), results_func=display, **kwargs):
     if isinstance(graphs, dict): #single graph
         graphs = (graphs,)
     types, svgs = [], []
@@ -66,7 +66,7 @@ def draw(graphs, legend=True, scale=1, sep='/', extra_nodes=(), extra_edges=(), 
         height = max(depths(graph).values())
         size = max(len(graph)/height, (height-0.3))*scale/2
         nodes = [(k, tuple(path_iter(k, sep)),
-                {'tooltip': '%s %s %.1000r' % (str(k), attr['type'], attr['params']),
+                {'tooltip': '%s %.1000r' % (attr['type'], attr['params']),
                 'fillcolor': COLORS[attr['type']],
                 }) for k, (attr, i) in graph.items()] + [(k, tuple(path_iter(k, sep)), attr) for (k, attr) in extra_nodes]
         edges = [(src, k, {}) for k, n in graph.items()
@@ -74,9 +74,9 @@ def draw(graphs, legend=True, scale=1, sep='/', extra_nodes=(), extra_edges=(), 
         svgs.append(draw_pydot(nodes, edges, size=size, **kwargs))
         types += [a['type'] for (a, i) in graph.values()]
     if legend:
-        display(HTML(ColorMap.html({t: COLORS[t] for t in types})))
+        results_func(HTML(ColorMap.html({t: COLORS[t] for t in types})))
     for svg in svgs:
-        display(SVG(svg))
+        results_func(SVG(svg))
 
 
 def draw_pydot(nodes, edges, direction='LR', **kwargs):
