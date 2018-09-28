@@ -53,33 +53,38 @@ def stub(path):
  
 get_type = lambda a: a['type'] if isinstance(a, dict) else type(a)
 get_params = lambda a: a['params'] if isinstance(a, dict) else {} #better logic here
+type_name = lambda t: getattr(t, '__name__', t) 
+
 
 def draw(graphs, legend=True, scale=1, sep='/', extra_nodes=(), extra_edges=(), results_func=display, **kwargs):
     if isinstance(graphs, dict): #single graph
         graphs = (graphs,)
-    types, svgs = [], []
+    all_types, svgs = [], []
     for graph in graphs:
         if not (isinstance(graph, dict) and len(graph)): continue
-        graph = dict(topological_sort(graph)) #fix ordering so that legend displays in better order
-        type_name = lambda t: getattr(t, '__name__', t) 
-        graph = {n: ({'type': type_name(get_type(a)), 'params': get_params(a)}, i) for (n, (a, i)) in graph.items()}
-        height = max(depths(graph).values())
-        size = max(len(graph)/height, (height-0.3))*scale/2
-        nodes = [(k, tuple(path_iter(k, sep)),
-                {'tooltip': '%s %.1000r' % (attr['type'], attr['params']),
-                'fillcolor': COLORS[attr['type']],
-                }) for k, (attr, i) in graph.items()] + [(k, tuple(path_iter(k, sep)), attr) for (k, attr) in extra_nodes]
-        edges = [(src, k, {}) for k, n in graph.items()
-                for src in input_nodes(n)] + list(extra_edges)
-        svgs.append(draw_pydot(nodes, edges, size=size, **kwargs))
-        types += [a['type'] for (a, i) in graph.values()]
+        nodes, edges, size, types = prepare_graph(graph)
+        g = make_pydot(nodes+list(extra_nodes), edges+list(extra_edges), size=size*scale, sep=sep, **kwargs)
+        svgs.append(g.create(format='svg').decode('utf-8'))
+        all_types += types
     if legend:
         results_func(HTML(ColorMap.html({t: COLORS[t] for t in types})))
     for svg in svgs:
         results_func(SVG(svg))
 
+def prepare_graph(graph):
+    graph = dict(topological_sort(graph)) #fix ordering so that legend displays in better order
+    graph = {n: ({'type': type_name(get_type(a)), 'params': get_params(a)}, i) for (n, (a, i)) in graph.items()}
+    height = max(depths(graph).values())
+    size = max(len(graph)/height, (height-0.3))/2
+    nodes = [(k, {'tooltip': '%s %.1000r' % (attr['type'], attr['params']), 'fillcolor': COLORS[attr['type']],
+                 }) for k, (attr, i) in graph.items()] 
+    edges = [(src, k, {}) for k, n in graph.items()
+            for src in input_nodes(n)]
+    types = [a['type'] for (a, i) in graph.values()]
+    return nodes, edges, size, types
 
-def draw_pydot(nodes, edges, direction='LR', **kwargs):
+
+def make_pydot(nodes, edges, direction='LR', sep='/', **kwargs):
     def make_subgraph(path, parent_graph):
         subgraph = pydot.Cluster(
            sanitise('/'.join(path)), label=sanitise(stub(path)), 
@@ -90,19 +95,19 @@ def draw_pydot(nodes, edges, direction='LR', **kwargs):
     #graphviz doesn't like nodes named 'graph'
     sanitise = lambda k: k + ' ' if k in {'graph', 'subgraph', 'digraph'} else str(k)
      
-    subgraphs = FuncCache(lambda path: make_subgraph(
-        path, subgraphs[parent(path)]))
+    subgraphs = FuncCache(lambda path: make_subgraph(path, subgraphs[parent(path)]))
     subgraphs[()] = g = pydot.Dot(rankdir=direction, directed=True, **kwargs)
     g.set_node_defaults(
         shape='box', style='rounded, filled', fillcolor='#ffffff')
 
-    for node, path, attr in nodes:
+    for node, attr in nodes:
+        path = tuple(path_iter(node, sep))
         subgraphs[parent(path)].add_node(
             pydot.Node(name=sanitise(node), label=sanitise(stub(path)), **attr))
     for src, dst, attr in edges:
         g.add_edge(pydot.Edge(sanitise(src), sanitise(dst), **attr))
 
-    return g.create(format='svg').decode('utf-8')
+    return g
 
 
 
