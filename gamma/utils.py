@@ -56,20 +56,21 @@ get_params = lambda a: a['params'] if isinstance(a, dict) else {} #better logic 
 type_name = lambda t: getattr(t, '__name__', t) 
 
 
-def draw(graphs, legend=True, scale=1, sep='/', extra_nodes=(), extra_edges=(), results_func=display, **kwargs):
+def draw(graphs, legend=True, scale=1, sep='/', direction='LR', extra_edges=(), extra_nodes=(), **kwargs):
     if isinstance(graphs, dict): #single graph
         graphs = (graphs,)
-    all_types, svgs = [], []
+    types, svgs = [], []
     for graph in graphs:
         if not (isinstance(graph, dict) and len(graph)): continue
-        nodes, edges, size, types = prepare_graph(graph)
-        g = make_pydot(nodes+list(extra_nodes), edges+list(extra_edges), size=size*scale, sep=sep, **kwargs)
-        svgs.append(g.create(format='svg').decode('utf-8'))
-        all_types += types
+        dot_graph = DotGraph(graph, scale=scale, sep=sep, direction=direction)
+        dot_graph.edges += list(extra_edges)
+        dot_graph.nodes += list(extra_nodes)
+        types += dot_graph.types
+        svgs.append(dot_graph.svg(**kwargs))
     if legend:
-        results_func(HTML(ColorMap.html({t: COLORS[t] for t in types})))
+        display(HTML(ColorMap.html({t: COLORS[t] for t in types})))
     for svg in svgs:
-        results_func(SVG(svg))
+        display(SVG(svg))
 
 def prepare_graph(graph):
     graph = dict(topological_sort(graph)) #fix ordering so that legend displays in better order
@@ -82,7 +83,6 @@ def prepare_graph(graph):
             for src in input_nodes(n)]
     types = [a['type'] for (a, i) in graph.values()]
     return nodes, edges, size, types
-
 
 def make_pydot(nodes, edges, direction='LR', sep='/', **kwargs):
     def make_subgraph(path, parent_graph):
@@ -108,6 +108,29 @@ def make_pydot(nodes, edges, direction='LR', sep='/', **kwargs):
         g.add_edge(pydot.Edge(sanitise(src), sanitise(dst), **attr))
 
     return g
+
+class DotGraph():
+    def __init__(self, graph, scale=1, sep='/', direction='LR'):
+        self.nodes, self.edges, self.size, self.types = prepare_graph(graph)
+        self.scale, self.sep, self.direction = scale, sep, direction
+
+    def dot_graph(self, **kwargs):
+        return make_pydot(self.nodes, self.edges, size=self.size*self.scale, direction=self.direction, sep=self.sep, **kwargs)
+
+    def svg(self, **kwargs):
+        return self.dot_graph(**kwargs).create(format='svg').decode('utf-8')
+
+    def _repr_svg_(self):
+        return self.svg()
+
+"""
+class DotGraph():
+    def __init__(self, dot_graph):
+        self.dot_graph = dot_graph
+        self.svg = dot_graph.create(format='svg').decode('utf-8')
+    def _repr_svg_(self):
+        return self.svg
+"""
 
 
 
