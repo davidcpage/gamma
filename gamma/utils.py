@@ -17,12 +17,21 @@ import re
 
 PALETTE = ('#8dd3c7', '#ffffb3', '#bebada', '#fb8072', '#80b1d3', '#fdb462',
            '#b3de69', '#fccde5', '#bc80bd', '#ccebc5', '#ffed6f', '#1f78b4',
-           '#33a02c', '#e31a1c', '#ff7f00', '#4dddf8',
-           '#e66493', '#b07b87',  '#4e90e3', '#dea05e', '#d0c281',
-           '#f0e189', '#e9e8b1', '#e0eb71', '#bbd2a4', '#6ed641', '#57eb9c',
-           '#3ca4d4', '#92d5e7', '#b15928')
+           '#33a02c', '#e31a1c', '#ff7f00', '#4dddf8', '#e66493', '#b07b87',  
+           '#4e90e3', '#dea05e', '#d0c281', '#f0e189', '#e9e8b1', '#e0eb71', 
+           '#bbd2a4', '#6ed641', '#57eb9c', '#3ca4d4', '#92d5e7', '#b15928')
 
-
+_colormap_css = (
+    '.pill {'
+        'margin:2px; border-width:1px; border-radius:9px; border-style:solid;'
+        'display:inline-block; width:100px; height:15px; line-height:15px;'
+    '}'
+    '.pill_text {'
+        'width:90%; margin:auto;'
+        'font-size:9px; text-align:center; overflow:hidden;'
+    '}'
+)
+    
 class ColorMap(dict):
     def __init__(self, *args, **kwargs):
         dict.__init__(self, *args, **kwargs)
@@ -33,14 +42,8 @@ class ColorMap(dict):
         return self[key]
 
     def html(self):
-        s = ('<div style="margin:2px;width:100px;height:15px;'
-             'display:inline-block;line-height:15px;'
-             'background-color:{};border-radius:9px;border-style:solid;'
-             'border-width:1px;">'
-             '<div style="width:90%;margin:auto;font-size:9px;'
-             'text-align:center;overflow:hidden;">{}</div></div>')
-        return ''.join((s.format(color, name) for name, color in self.items()))
-
+        s = '<div class=pill style="background-color:{}"><div class=pill_text>{}</div></div>'
+        return '<style>'+_colormap_css+'</style>'+''.join((s.format(color, name) for name, color in self.items()))
     _repr_html_ = html
 
 COLORS = ColorMap()
@@ -56,7 +59,7 @@ get_params = lambda a: a['params'] if isinstance(a, dict) else {} #better logic 
 type_name = lambda t: getattr(t, '__name__', t) 
 
 
-def draw(graphs, legend=True, scale=1, sep='/', direction='LR', extra_edges=(), extra_nodes=(), **kwargs):
+def draw(graphs, show_legend=True, scale=1, sep='/', direction='LR', extra_edges=(), extra_nodes=(), **kwargs):
     if isinstance(graphs, dict): #single graph
         graphs = (graphs,)
     types, svgs = [], []
@@ -67,8 +70,8 @@ def draw(graphs, legend=True, scale=1, sep='/', direction='LR', extra_edges=(), 
         dot_graph.nodes += list(extra_nodes)
         types += dot_graph.types
         svgs.append(dot_graph.svg(**kwargs))
-    if legend:
-        display(HTML(ColorMap.html({t: COLORS[t] for t in types})))
+    if show_legend:
+        display(legend(types))
     for svg in svgs:
         display(SVG(svg))
 
@@ -109,13 +112,17 @@ def make_pydot(nodes, edges, direction='LR', sep='/', **kwargs):
 
     return g
 
+def legend(types):
+    return ColorMap({t: COLORS[t] for t in types})
+
 class DotGraph():
     def __init__(self, graph, scale=1, sep='/', direction='LR'):
         self.nodes, self.edges, self.size, self.types = prepare_graph(graph)
         self.scale, self.sep, self.direction = scale, sep, direction
 
     def dot_graph(self, **kwargs):
-        return make_pydot(self.nodes, self.edges, size=self.size*self.scale, direction=self.direction, sep=self.sep, **kwargs)
+        return make_pydot(self.nodes, self.edges, size=self.size*self.scale, 
+                            direction=self.direction, sep=self.sep, **kwargs)
 
     def svg(self, **kwargs):
         return self.dot_graph(**kwargs).create(format='svg').decode('utf-8')
@@ -123,15 +130,10 @@ class DotGraph():
     def _repr_svg_(self):
         return self.svg()
 
-"""
-class DotGraph():
-    def __init__(self, dot_graph):
-        self.dot_graph = dot_graph
-        self.svg = dot_graph.create(format='svg').decode('utf-8')
-    def _repr_svg_(self):
-        return self.svg
-"""
-
+    def write(self, filename, **kwargs):
+        with open(filename, 'w') as f:
+            f.write(self.svg(**kwargs))
+        return self
 
 
 def get_file(origin, fname=None, cache_dir='~/.gamma'):
